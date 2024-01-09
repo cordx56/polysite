@@ -20,21 +20,21 @@ mod tests {
             .add_rule(
                 "hello",
                 Rule::new().set_compiler(|ctx, _rule| {
-                    Box::new(Box::pin(async move {
+                    compiler!({
                         ctx.load("world").await;
                         println!("Hello, Compiler!");
                         Ok(())
-                    }))
+                    })
                 }),
             )
             .await
             .add_rule(
                 "world",
                 Rule::new().set_compiler(|_ctx, _rule| {
-                    Box::new(Box::pin(async move {
+                    compiler!({
                         println!("world!");
                         Ok(())
-                    }))
+                    })
                 }),
             )
             .await

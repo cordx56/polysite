@@ -16,6 +16,13 @@ impl<F> CompileMethodFunc for F where
 {
 }
 
+#[macro_export]
+macro_rules! compiler {
+    ($b:expr) => {
+        Box::new(Box::pin(async move { $b }))
+    };
+}
+
 pub struct Rule {
     match_globs: Option<Vec<String>>,
     route_method: Option<Box<dyn RouteMethod>>,
