@@ -1,8 +1,13 @@
 mod rule;
 mod site;
 
+use std::collections::HashMap;
+
 pub use rule::Rule;
 pub use site::builder::SiteBuilder;
+
+pub type CompileResult = Result<(), ()>;
+pub type Metadata = HashMap<String, String>;
 
 #[cfg(test)]
 mod tests {
@@ -14,18 +19,22 @@ mod tests {
         let result = builder
             .add_rule(
                 "hello",
-                Rule::new().set_compiler(|ctx, rule| {
-                    println!("Hello, Compiler!");
-                    Ok(())
+                Rule::new().set_compiler(|ctx, _rule| {
+                    Box::new(Box::pin(async move {
+                        ctx.load("world").await;
+                        println!("Hello, Compiler!");
+                        Ok(())
+                    }))
                 }),
             )
             .await
             .add_rule(
                 "world",
-                Rule::new().set_compiler(|ctx, rule| {
-                    //ctx.lock().await.load("hello").await;
-                    println!("world!");
-                    Ok(())
+                Rule::new().set_compiler(|_ctx, _rule| {
+                    Box::new(Box::pin(async move {
+                        println!("world!");
+                        Ok(())
+                    }))
                 }),
             )
             .await

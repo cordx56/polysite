@@ -1,30 +1,25 @@
-use super::context::SiteContext;
+use super::context::BuildContext;
 use crate::rule::Rule;
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 
-pub type Rules = Arc<Mutex<HashMap<String, Arc<Mutex<Rule>>>>>;
-
 pub struct SiteBuilder {
-    ctx: Arc<Mutex<SiteContext>>,
+    ctx: BuildContext,
 }
 
 impl SiteBuilder {
     pub fn new() -> Self {
         SiteBuilder {
-            ctx: Arc::new(Mutex::new(SiteContext::new())),
+            ctx: BuildContext::new(),
         }
     }
-    pub async fn add_rule(self, name: impl ToString, rule: Rule) -> Self {
-        self.ctx.lock().await.add_rule(name, rule).await;
+    pub async fn add_rule(mut self, name: impl ToString, rule: Rule) -> Self {
+        self.ctx.add_rule(name, rule).await;
         self
     }
 
     pub async fn build(&mut self) -> Result<(), String> {
         let mut set = JoinSet::new();
-        for rule in self.ctx.lock().await.rules.lock().await.values() {
+        for rule in self.ctx.rules.lock().await.values() {
             let ctx = self.ctx.clone();
             let r = rule.clone();
             set.spawn(async move { r.lock().await.compile(ctx).await });
