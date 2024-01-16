@@ -1,13 +1,6 @@
-mod rule;
-mod site;
+pub mod builder;
 
-use std::collections::HashMap;
-
-pub use rule::Rule;
-pub use site::builder::SiteBuilder;
-
-pub type CompileResult = Result<(), ()>;
-pub type Metadata = HashMap<String, String>;
+pub use builder::*;
 
 #[cfg(test)]
 mod tests {
@@ -15,27 +8,38 @@ mod tests {
 
     #[tokio::test]
     async fn build_site() {
-        let builder = SiteBuilder::new();
+        let builder = Builder::new();
         let result = builder
             .add_rule(
-                "hello",
-                Rule::new().set_compiler(|ctx, _rule| {
-                    compiler!({
-                        ctx.load("world").await;
-                        println!("Hello, Compiler!");
-                        Ok(())
-                    })
-                }),
+                "compile",
+                Rule::new()
+                    .set_match(["src/**/*"])
+                    .set_routing(routing::set_ext("txt"))
+                    .set_compiler(|ctx| {
+                        compiler!({
+                            let hello = ctx.load("hello").await;
+                            println!("hello: {:?}", hello);
+                            println!(
+                                "{} -> {}",
+                                ctx.source().to_string_lossy(),
+                                ctx.target().to_string_lossy()
+                            );
+                            Ok(serde_json::Value::Null)
+                        })
+                    }),
             )
             .await
             .add_rule(
-                "world",
-                Rule::new().set_compiler(|_ctx, _rule| {
-                    compiler!({
-                        println!("world!");
-                        Ok(())
-                    })
-                }),
+                "hello",
+                Rule::new()
+                    .set_match(["src/**/*"])
+                    .set_routing(routing::set_ext(".txt"))
+                    .set_compiler(|ctx| {
+                        compiler!({
+                            let source = ctx.source();
+                            Ok(Metadata::String(source.to_string_lossy().to_string()))
+                        })
+                    }),
             )
             .await
             .build()
