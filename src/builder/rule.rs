@@ -1,7 +1,6 @@
-use crate::{Compiling, Context, Metadata};
+use crate::{CompileResult, Compiler, Compiling, Context, Metadata};
 use anyhow::{anyhow, Error};
 use glob::{glob, GlobError, PatternError};
-use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
@@ -26,34 +25,14 @@ pub enum CompileError {
     UserError(Error),
 }
 
-pub type CompileResult = Result<Metadata, Error>;
 pub trait RoutingMethod: Fn(&PathBuf) -> PathBuf + Send + Sync {}
 impl<F> RoutingMethod for F where F: Fn(&PathBuf) -> PathBuf + Send + Sync {}
-pub trait CompileMethod:
-    Fn(Context) -> Box<dyn Future<Output = CompileResult> + Unpin + Send> + Send + Sync
-{
-}
-impl<F> CompileMethod for F where
-    F: Fn(Context) -> Box<dyn Future<Output = CompileResult> + Unpin + Send> + Send + Sync
-{
-}
-
-#[macro_export]
-macro_rules! compiler {
-    ($b:expr) => {
-        Box::new(Box::pin(async move {
-            use $crate::to_metadata;
-            let res = $b;
-            res.map(|v| to_metadata(v))?
-        }))
-    };
-}
 
 pub struct Rule {
     name: String,
     match_globs: Option<Vec<String>>,
     routing_method: Option<Arc<Box<dyn RoutingMethod>>>,
-    compile_method: Option<Arc<Box<dyn CompileMethod>>>,
+    compiler: Option<Arc<Box<dyn Compiler>>>,
     load: bool,
     load_notify: Arc<Notify>,
 }
@@ -65,7 +44,7 @@ impl Rule {
             name,
             match_globs: None,
             routing_method: None,
-            compile_method: None,
+            compiler: None,
             load: false,
             load_notify: Arc::new(Notify::new()),
         }
@@ -95,8 +74,8 @@ impl Rule {
     /// Set compiler method
     ///
     /// The function passed to this method will be called in compilation task.
-    pub fn set_compiler(mut self, compile_method_func: impl CompileMethod + 'static) -> Self {
-        self.compile_method = Some(Arc::new(Box::new(compile_method_func)));
+    pub fn set_compiler(mut self, compiler: Box<dyn Compiler>) -> Self {
+        self.compiler = Some(Arc::new(compiler));
         self
     }
 
@@ -111,12 +90,17 @@ impl Rule {
             Some(self.load_notify.clone())
         }
     }
+    /// Mark as compilation finished
+    pub(crate) fn set_finished(&mut self) {
+        self.load = true;
+        self.load_notify.notify_waiters();
+    }
 
     /// Do compilation task
     ///
     /// Send notifications to all waiters when tasks are completed.
     pub(crate) async fn compile(&mut self, ctx: Context) -> CompileResult {
-        let src_dir = ctx.config().src_dir();
+        let src_dir = ctx.config().source_dir();
         let match_globs = self
             .match_globs
             .as_ref()
@@ -135,8 +119,8 @@ impl Rule {
             .flatten()
             .filter(|p| p.is_file())
             .collect::<Vec<_>>();
-        let compile_method = self
-            .compile_method
+        let compiler = self
+            .compiler
             .clone()
             .ok_or(anyhow!(CompileError::NoCompiler))?;
         let routing = self.routing_method.clone();
@@ -144,8 +128,8 @@ impl Rule {
         for path in paths {
             let target = ctx
                 .config()
-                .dist_dir()
-                .join(path.strip_prefix(ctx.config().src_dir()).unwrap());
+                .target_dir()
+                .join(path.strip_prefix(&src_dir).unwrap());
             let target = match &routing {
                 Some(r) => r(&target),
                 None => target,
@@ -156,7 +140,7 @@ impl Rule {
             };
             let mut new_ctx = ctx.clone();
             new_ctx.set_compiling(compiling);
-            set.spawn(compile_method(new_ctx));
+            set.spawn(compiler.compile(new_ctx));
         }
         let mut results = Vec::new();
         while let Some(res) = set.join_next().await {
@@ -164,8 +148,6 @@ impl Rule {
             let res = res.map_err(|e| anyhow!(CompileError::UserError(e)))?;
             results.push(res);
         }
-        self.load = true;
-        self.load_notify.notify_waiters();
         let metadata = Metadata::Array(results);
         Ok(metadata)
     }

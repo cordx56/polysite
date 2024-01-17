@@ -1,23 +1,38 @@
-use crate::{compiler, error::here, CompileMethod, Metadata};
-use anyhow::{anyhow, Ok};
+use crate::{error::here, *};
+use anyhow::{anyhow, Ok, Result};
 use pulldown_cmark::{html::push_html, Options, Parser};
 use std::io::Write;
-use tera::{Context, Tera};
 
-pub fn markdown_compiler(
-    template_dir: impl ToString,
-    template: impl ToString,
-    options: Option<Options>,
-) -> Box<dyn CompileMethod> {
-    let template_dir = template_dir.to_string();
-    let template = template.to_string();
-    Box::new(move |ctx| {
+pub struct MarkdownCompiler {
+    template: String,
+    tera: tera::Tera,
+    options: Options,
+}
+
+impl MarkdownCompiler {
+    pub fn new(
+        template_dir: impl AsRef<str>,
+        template: impl ToString,
+        options: Option<Options>,
+    ) -> Result<Self> {
+        let template = template.to_string();
+        let tera = tera::Tera::new(template_dir.as_ref())
+            .map_err(|e| anyhow!("Template error on {}: {:?}", here!(), e))?;
         let options = options.unwrap_or(Options::all());
-        let template_dir = template_dir.clone();
-        let template = template.clone();
-        compiler!({
-            let tera = Tera::new(&template_dir)
-                .map_err(|e| anyhow!("Template error on {}: {:?}", here!(), e))?;
+        Ok(Self {
+            template,
+            tera,
+            options,
+        })
+    }
+}
+
+impl Compiler for MarkdownCompiler {
+    fn compile(&self, ctx: Context) -> CompilerReturn {
+        let template = self.template.clone();
+        let tera = self.tera.clone();
+        let options = self.options.clone();
+        Box::new(compiler!({
             let body = ctx.get_source_string();
             let fm = fronma::parser::parse::<Metadata>(&body)
                 .map_err(|e| anyhow!("Front matter parse error on {}: {:?}", here!(), e))?;
@@ -33,7 +48,7 @@ pub fn markdown_compiler(
                     e
                 )
             })?;
-            let mut metadata = ctx.metadata().clone();
+            let mut metadata = ctx.metadata().await.clone();
             metadata
                 .as_object_mut()
                 .unwrap()
@@ -42,14 +57,14 @@ pub fn markdown_compiler(
                 .as_object_mut()
                 .unwrap()
                 .insert("body".to_string(), Metadata::String(html));
-            let tera_ctx = Context::from_serialize(metadata).unwrap();
+            let tera_ctx = tera::Context::from_serialize(metadata).unwrap();
             let out = tera
-                .render(template.as_ref(), &tera_ctx)
+                .render(&template, &tera_ctx)
                 .map_err(|e| anyhow!("Tera rendering error on {}: {:?}", here!(), e))?;
             target
                 .write(out.as_bytes())
                 .map_err(|e| anyhow!("Failed to write file on {}: {:?}", here!(), e))?;
             Ok(header)
-        })
-    })
+        }))
+    }
 }

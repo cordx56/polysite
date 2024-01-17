@@ -5,51 +5,59 @@ pub mod error;
 pub mod routing;
 
 pub use builder::*;
+pub use compiler::*;
 pub use config::Config;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use anyhow::Ok;
-    use serde::Serialize;
+    use std::path::PathBuf;
 
-    #[derive(Serialize, Clone, Debug)]
-    struct SiteMeta {
-        title: String,
+    struct PrintCompiler {}
+    impl PrintCompiler {
+        fn new() -> Box<Self> {
+            Box::new(Self {})
+        }
+    }
+    impl Compiler for PrintCompiler {
+        fn compile(&self, ctx: Context) -> CompilerReturn {
+            Box::new(compiler!({
+                let src = ctx.source().to_string_lossy().to_string();
+                let tgt = ctx.target().to_string_lossy().to_string();
+                println!("{} -> {}", src, tgt);
+                Ok(Metadata::String(tgt))
+            }))
+        }
     }
 
     #[tokio::test]
     async fn build_site() {
-        let builder = Builder::new(Config::default());
+        let mut config = Config::default();
+        config.set_source_dir(Some(PathBuf::from("src")));
+        let builder = Builder::new(config);
         let result = builder
             .add_rule(
                 Rule::new("compile")
-                    .set_match(["src/**/*"])
+                    .set_match(["**/*"])
                     .set_routing(routing::set_ext("txt"))
-                    .set_compiler(|ctx| {
-                        compiler!({
-                            let hello = ctx.wait("hello").await;
-                            println!("hello: {:?}", hello);
-                            println!(
-                                "{} -> {}",
-                                ctx.source().to_string_lossy(),
-                                ctx.target().to_string_lossy()
-                            );
-                            Ok(Metadata::Null)
+                    .set_compiler(
+                        GenericCompiler::from(|ctx| {
+                            compiler!({
+                                ctx.wait("hello").await?;
+                                println!("{:?}", ctx.metadata().await);
+                                Ok(Metadata::Null)
+                            })
                         })
-                    }),
+                        .get(),
+                    ),
             )
             .await
             .add_rule(
                 Rule::new("hello")
-                    .set_match(["src/**/*"])
-                    .set_routing(routing::set_ext(".txt"))
-                    .set_compiler(move |ctx| {
-                        compiler!({
-                            //let source = ctx.source();
-                            Ok(Metadata::Null)
-                        })
-                    }),
+                    .set_match(["**/*"])
+                    .set_routing(routing::set_ext("txt"))
+                    .set_compiler(PrintCompiler::new()),
             )
             .await
             .build()

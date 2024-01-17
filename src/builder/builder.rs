@@ -1,12 +1,10 @@
 use crate::{
     error::{here, Location},
-    Config, Context, Rule,
+    *,
 };
 use anyhow::{anyhow, Error, Result};
 use serde::Serialize;
-use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::Mutex;
 use tokio::task::{JoinError, JoinSet};
 
 #[derive(Error, Debug)]
@@ -18,23 +16,23 @@ pub enum BuildError {
 }
 
 pub struct Builder {
-    ctx: Arc<Mutex<Context>>,
+    ctx: Context,
 }
 
 impl Builder {
     pub fn new(config: Config) -> Self {
         Self {
-            ctx: Arc::new(Mutex::new(Context::new(config))),
+            ctx: Context::new(config),
         }
     }
-    pub async fn add_rule(self, rule: Rule) -> Self {
-        self.ctx.lock().await.add_rule(rule);
+    pub async fn add_rule(mut self, rule: Rule) -> Self {
+        self.ctx.add_rule(rule);
         self
     }
 
     /// Insert metadata
-    pub async fn add_context(&self, name: impl ToString, data: impl Serialize) -> Result<()> {
-        self.ctx.lock().await.insert(name, data)
+    pub async fn add_context(&mut self, name: impl ToString, data: impl Serialize) -> Result<()> {
+        self.ctx.insert(name, data).await
     }
 
     /// Run build
@@ -42,15 +40,23 @@ impl Builder {
     /// Compile all rules
     pub async fn build(&mut self) -> Result<()> {
         let mut set = JoinSet::new();
-        let rules = self.ctx.lock().await.get_rules().clone();
+        let rules = self.ctx.get_rules().clone();
         for rule in rules.into_values() {
-            let ctx = self.ctx.lock().await.clone();
-            set.spawn(async move { rule.lock().await.compile(ctx).await });
+            let ctx = self.ctx.clone();
+            set.spawn(async move {
+                let cloned = rule.clone();
+                let mut locked = cloned.lock().await;
+                (rule, locked.compile(ctx).await)
+            });
         }
         while let Some(join_res) = set.join_next().await {
-            join_res
-                .map_err(|e| anyhow!(BuildError::JoinError(here!(), e)))?
-                .map_err(|e| anyhow!(BuildError::CompileError(here!(), e)))?;
+            let (rule, res) =
+                join_res.map_err(|e| anyhow!("Join error: {:?} on {}", e, here!()))?;
+            let mut rule = rule.lock().await;
+            let name = rule.get_name();
+            let res = res.map_err(|e| anyhow!("Rule {}: compile error: {}", name, e))?;
+            self.ctx.insert(name, res).await?;
+            rule.set_finished();
         }
         Ok(())
     }

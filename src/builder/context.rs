@@ -1,7 +1,4 @@
-use crate::{
-    error::{here, Location},
-    to_metadata, Config, Metadata, Rule,
-};
+use crate::*;
 use anyhow::{anyhow, Result};
 use serde::Serialize;
 use serde_json::json;
@@ -9,16 +6,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
-use thiserror::Error;
 use tokio::sync::Mutex;
-
-#[derive(Error, Debug)]
-pub enum ContextError {
-    #[error("Data {} is not found on {}", .1, .0)]
-    DataNotFound(Location, String),
-    #[error("Rule {} is not found on {}", .1, .0)]
-    RuleNotFound(Location, String),
-}
 
 #[derive(Debug, Clone)]
 pub struct Compiling {
@@ -36,7 +24,7 @@ impl Compiling {
 
 #[derive(Clone)]
 pub struct Context {
-    metadata: Metadata,
+    metadata: Arc<Mutex<Metadata>>,
     rules: HashMap<String, Arc<Mutex<Rule>>>,
     compiling: Option<Compiling>,
     config: Config,
@@ -45,7 +33,7 @@ pub struct Context {
 impl Context {
     pub fn new(config: Config) -> Self {
         Self {
-            metadata: json!({}),
+            metadata: Arc::new(Mutex::new(json!({}))),
             rules: HashMap::new(),
             compiling: None,
             config,
@@ -61,12 +49,12 @@ impl Context {
     }
 
     /// Wait for specified rule compile completion
-    pub async fn wait(&self, name: impl ToString) -> Result<()> {
-        let name = name.to_string();
+    pub async fn wait(&self, name: impl AsRef<str>) -> Result<()> {
+        let name = name.as_ref();
         let notify = {
             self.rules
-                .get(&name)
-                .ok_or(anyhow!(ContextError::RuleNotFound(here!(), name)))?
+                .get(name)
+                .ok_or(anyhow!("Rule {} not found", name))?
                 .lock()
                 .await
                 .get_load_notify()
@@ -77,13 +65,15 @@ impl Context {
         Ok(())
     }
     /// Get metadata
-    pub fn metadata(&self) -> Metadata {
-        self.metadata.clone()
+    pub async fn metadata(&self) -> Metadata {
+        self.metadata.lock().await.clone()
     }
     /// Insert metadata
-    pub fn insert(&mut self, name: impl ToString, value: impl Serialize) -> Result<()> {
+    pub async fn insert(&mut self, name: impl ToString, value: impl Serialize) -> Result<()> {
         let metadata = to_metadata(value)?;
         self.metadata
+            .lock()
+            .await
             .as_object_mut()
             .unwrap()
             .insert(name.to_string(), metadata);
