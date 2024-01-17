@@ -1,3 +1,4 @@
+pub mod copy;
 pub mod markdown;
 
 use crate::*;

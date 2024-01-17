@@ -36,7 +36,7 @@ impl Compiler for MarkdownCompiler {
             let body = ctx.get_source_string();
             let fm = fronma::parser::parse::<Metadata>(&body)
                 .map_err(|e| anyhow!("Front matter parse error on {}: {:?}", here!(), e))?;
-            let header = fm.headers;
+            let mut file_metadaata = fm.headers;
             let parser = Parser::new_ext(fm.body, options);
             let mut html = String::new();
             push_html(&mut html, parser);
@@ -48,15 +48,15 @@ impl Compiler for MarkdownCompiler {
                     e
                 )
             })?;
+            file_metadaata
+                .as_object_mut()
+                .unwrap()
+                .insert("body".to_string(), Metadata::String(html));
             let mut metadata = ctx.metadata().await.clone();
             metadata
                 .as_object_mut()
                 .unwrap()
-                .extend(header.as_object().unwrap().clone().into_iter());
-            metadata
-                .as_object_mut()
-                .unwrap()
-                .insert("body".to_string(), Metadata::String(html));
+                .extend(file_metadaata.as_object().unwrap().clone().into_iter());
             let tera_ctx = tera::Context::from_serialize(metadata).unwrap();
             let out = tera
                 .render(&template, &tera_ctx)
@@ -64,7 +64,7 @@ impl Compiler for MarkdownCompiler {
             target
                 .write(out.as_bytes())
                 .map_err(|e| anyhow!("Failed to write file on {}: {:?}", here!(), e))?;
-            Ok(header)
+            Ok(file_metadaata)
         }))
     }
 }
