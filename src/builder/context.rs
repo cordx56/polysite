@@ -77,15 +77,8 @@ impl Context {
         Ok(())
     }
     /// Get metadata
-    pub fn get_metadata(&mut self, name: impl ToString) -> Result<Metadata> {
-        let name = name.to_string();
-        let data = self
-            .metadata
-            .as_object()
-            .unwrap()
-            .get(&name)
-            .ok_or(anyhow!(ContextError::DataNotFound(here!(), name)))?;
-        Ok(data.clone())
+    pub fn metadata(&self) -> Metadata {
+        self.metadata.clone()
     }
     /// Insert metadata
     pub fn insert(&mut self, name: impl ToString, value: impl Serialize) -> Result<()> {

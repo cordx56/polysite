@@ -8,7 +8,11 @@ async fn main() {
             Rule::new("markdown")
                 .set_match(["**/*.md"])
                 .set_routing(routing::set_ext("html"))
-                .set_compiler(compiler::markdown::markdown_compiler(None)),
+                .set_compiler(compiler::markdown::markdown_compiler(
+                    "templates/**",
+                    "index.html",
+                    None,
+                )),
         )
         .await
         .build()
