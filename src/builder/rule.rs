@@ -1,10 +1,8 @@
 pub mod routing;
 
-use crate::Compiling;
-use crate::Context;
+use crate::{Compiling, Context, Metadata};
 use anyhow::{anyhow, Error};
 use glob::{glob, GlobError, PatternError};
-use serde_json::Value;
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,8 +11,6 @@ use tokio::{
     sync::Notify,
     task::{JoinError, JoinSet},
 };
-
-pub type Metadata = Value;
 
 #[derive(Error, Debug)]
 pub enum CompileError {
@@ -49,31 +45,42 @@ impl<F> CompileMethodFunc for F where
 #[macro_export]
 macro_rules! compiler {
     ($b:expr) => {
-        Box::new(Box::pin(async move { $b }))
+        Box::new(Box::pin(async move {
+            use $crate::to_metadata;
+            let res = $b;
+            res.map(|v| to_metadata(v))?
+        }))
     };
 }
 
 pub struct Rule {
+    name: String,
     match_globs: Option<Vec<String>>,
     routing_method: Option<Arc<Box<dyn RoutingMethod>>>,
     compile_method: Option<Arc<Box<dyn CompileMethodFunc>>>,
-    metadata: Option<Metadata>,
     load: bool,
     load_notify: Arc<Notify>,
 }
 
 impl Rule {
-    pub fn new() -> Self {
+    pub fn new(name: impl ToString) -> Self {
+        let name = name.to_string();
         Rule {
+            name,
             match_globs: None,
             routing_method: None,
             compile_method: None,
-            metadata: None,
             load: false,
             load_notify: Arc::new(Notify::new()),
         }
     }
 
+    /// Get this rule name
+    pub fn get_name(&self) -> String {
+        self.name.clone()
+    }
+
+    /// Set source file globs
     pub fn set_match(mut self, globs: impl IntoIterator<Item = impl ToString>) -> Self {
         let gs = globs.into_iter().map(|s| s.to_string()).collect();
         self.match_globs = Some(gs);
@@ -97,11 +104,6 @@ impl Rule {
         self
     }
 
-    /// Get compiled metadata
-    pub(crate) fn get_metadata(&self) -> Option<Metadata> {
-        self.metadata.clone()
-    }
-
     /// Get load notify
     ///
     /// If compilation task is finished, this method returns None.
@@ -117,7 +119,7 @@ impl Rule {
     /// Do compilation task
     ///
     /// Send notifications to all waiters when tasks are completed.
-    pub(crate) async fn compile(&mut self, ctx: Context) -> CompileResult {
+    pub(crate) async fn compile(&mut self, ctx: Context) -> Result<(), Error> {
         let match_globs = self
             .match_globs
             .as_ref()
@@ -161,8 +163,8 @@ impl Rule {
         }
         self.load = true;
         self.load_notify.notify_waiters();
-        let metadata = Value::Array(results);
-        self.metadata = Some(metadata.clone());
-        Ok(metadata)
+        let metadata = Metadata::Array(results);
+        ctx.insert(self.name.clone(), metadata.clone()).await?;
+        Ok(())
     }
 }
