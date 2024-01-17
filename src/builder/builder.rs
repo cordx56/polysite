@@ -1,9 +1,12 @@
-use crate::error::{here, Location};
-use crate::Context;
-use crate::Rule;
+use crate::{
+    error::{here, Location},
+    Config, Context, Rule,
+};
 use anyhow::{anyhow, Error, Result};
 use serde::Serialize;
+use std::sync::Arc;
 use thiserror::Error;
+use tokio::sync::Mutex;
 use tokio::task::{JoinError, JoinSet};
 
 #[derive(Error, Debug)]
@@ -15,23 +18,23 @@ pub enum BuildError {
 }
 
 pub struct Builder {
-    ctx: Context,
+    ctx: Arc<Mutex<Context>>,
 }
 
 impl Builder {
-    pub fn new() -> Self {
+    pub fn new(config: Config) -> Self {
         Self {
-            ctx: Context::new(),
+            ctx: Arc::new(Mutex::new(Context::new(config))),
         }
     }
-    pub async fn add_rule(mut self, rule: Rule) -> Self {
-        self.ctx.add_rule(rule).await;
+    pub async fn add_rule(self, rule: Rule) -> Self {
+        self.ctx.lock().await.add_rule(rule);
         self
     }
 
     /// Insert metadata
     pub async fn add_context(&self, name: impl ToString, data: impl Serialize) -> Result<()> {
-        self.ctx.insert(name, data).await
+        self.ctx.lock().await.insert(name, data)
     }
 
     /// Run build
@@ -39,10 +42,10 @@ impl Builder {
     /// Compile all rules
     pub async fn build(&mut self) -> Result<()> {
         let mut set = JoinSet::new();
-        for rule in self.ctx.rules.lock().await.values() {
-            let ctx = self.ctx.clone();
-            let r = rule.clone();
-            set.spawn(async move { r.lock().await.compile(ctx).await });
+        let rules = self.ctx.lock().await.get_rules().clone();
+        for rule in rules.into_values() {
+            let ctx = self.ctx.lock().await.clone();
+            set.spawn(async move { rule.lock().await.compile(ctx).await });
         }
         while let Some(join_res) = set.join_next().await {
             join_res

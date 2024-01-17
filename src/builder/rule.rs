@@ -1,5 +1,3 @@
-pub mod routing;
-
 use crate::{Compiling, Context, Metadata};
 use anyhow::{anyhow, Error};
 use glob::{glob, GlobError, PatternError};
@@ -16,8 +14,6 @@ use tokio::{
 pub enum CompileError {
     #[error("No globs are registered")]
     NoGlobs,
-    #[error("No routing method is registered")]
-    NoRouting,
     #[error("No compiler is registered")]
     NoCompiler,
     #[error("Glob pattern error: {:?}", .0)]
@@ -33,11 +29,11 @@ pub enum CompileError {
 pub type CompileResult = Result<Metadata, Error>;
 pub trait RoutingMethod: Fn(&PathBuf) -> PathBuf + Send + Sync {}
 impl<F> RoutingMethod for F where F: Fn(&PathBuf) -> PathBuf + Send + Sync {}
-pub trait CompileMethodFunc:
+pub trait CompileMethod:
     Fn(Context) -> Box<dyn Future<Output = CompileResult> + Unpin + Send> + Send + Sync
 {
 }
-impl<F> CompileMethodFunc for F where
+impl<F> CompileMethod for F where
     F: Fn(Context) -> Box<dyn Future<Output = CompileResult> + Unpin + Send> + Send + Sync
 {
 }
@@ -57,7 +53,7 @@ pub struct Rule {
     name: String,
     match_globs: Option<Vec<String>>,
     routing_method: Option<Arc<Box<dyn RoutingMethod>>>,
-    compile_method: Option<Arc<Box<dyn CompileMethodFunc>>>,
+    compile_method: Option<Arc<Box<dyn CompileMethod>>>,
     load: bool,
     load_notify: Arc<Notify>,
 }
@@ -99,7 +95,7 @@ impl Rule {
     /// Set compiler method
     ///
     /// The function passed to this method will be called in compilation task.
-    pub fn set_compiler(mut self, compile_method_func: impl CompileMethodFunc + 'static) -> Self {
+    pub fn set_compiler(mut self, compile_method_func: impl CompileMethod + 'static) -> Self {
         self.compile_method = Some(Arc::new(Box::new(compile_method_func)));
         self
     }
@@ -119,14 +115,16 @@ impl Rule {
     /// Do compilation task
     ///
     /// Send notifications to all waiters when tasks are completed.
-    pub(crate) async fn compile(&mut self, ctx: Context) -> Result<(), Error> {
+    pub(crate) async fn compile(&mut self, ctx: Context) -> CompileResult {
+        let src_dir = ctx.config().src_dir();
         let match_globs = self
             .match_globs
             .as_ref()
-            .ok_or(anyhow!(CompileError::NoGlobs))?;
-        let paths = match_globs
+            .ok_or(anyhow!(CompileError::NoGlobs))?
             .iter()
-            .map(|g| glob(g))
+            .map(|g| src_dir.join(PathBuf::from(g)).to_string_lossy().to_string());
+        let paths = match_globs
+            .map(|g| glob(&g))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| anyhow!(CompileError::GlobPattern(e)))?
             .into_iter()
@@ -135,18 +133,23 @@ impl Rule {
             .map_err(|e| anyhow!(CompileError::GlobError(e)))?
             .into_iter()
             .flatten()
+            .filter(|p| p.is_file())
             .collect::<Vec<_>>();
         let compile_method = self
             .compile_method
             .clone()
             .ok_or(anyhow!(CompileError::NoCompiler))?;
-        let routing = self
-            .routing_method
-            .clone()
-            .ok_or(anyhow!(CompileError::NoRouting))?;
+        let routing = self.routing_method.clone();
         let mut set = JoinSet::new();
         for path in paths {
-            let target = routing(&path);
+            let target = ctx
+                .config()
+                .dist_dir()
+                .join(path.strip_prefix(ctx.config().src_dir()).unwrap());
+            let target = match &routing {
+                Some(r) => r(&target),
+                None => target,
+            };
             let compiling = Compiling {
                 source: path,
                 target,
@@ -164,7 +167,6 @@ impl Rule {
         self.load = true;
         self.load_notify.notify_waiters();
         let metadata = Metadata::Array(results);
-        ctx.insert(self.name.clone(), metadata.clone()).await?;
-        Ok(())
+        Ok(metadata)
     }
 }

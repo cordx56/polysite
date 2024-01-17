@@ -1,7 +1,11 @@
 pub mod builder;
+pub mod compiler;
+pub mod config;
 pub mod error;
+pub mod routing;
 
 pub use builder::*;
+pub use config::Config;
 
 #[cfg(test)]
 mod tests {
@@ -16,7 +20,7 @@ mod tests {
 
     #[tokio::test]
     async fn build_site() {
-        let builder = Builder::new();
+        let builder = Builder::new(Config::default());
         let result = builder
             .add_rule(
                 Rule::new("compile")

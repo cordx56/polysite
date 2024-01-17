@@ -1,11 +1,12 @@
 use crate::{
     error::{here, Location},
-    to_metadata, Metadata, Rule,
+    to_metadata, Config, Metadata, Rule,
 };
 use anyhow::{anyhow, Result};
 use serde::Serialize;
 use serde_json::json;
 use std::collections::HashMap;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
@@ -35,26 +36,28 @@ impl Compiling {
 
 #[derive(Clone)]
 pub struct Context {
-    pub(crate) metadata: Arc<Mutex<Metadata>>,
-    pub(crate) rules: Arc<Mutex<HashMap<String, Arc<Mutex<Rule>>>>>,
-    pub(crate) compiling: Option<Compiling>,
+    metadata: Metadata,
+    rules: HashMap<String, Arc<Mutex<Rule>>>,
+    compiling: Option<Compiling>,
+    config: Config,
 }
 
 impl Context {
-    pub fn new() -> Self {
+    pub fn new(config: Config) -> Self {
         Self {
-            metadata: Arc::new(Mutex::new(json!({}))),
-            rules: Arc::new(Mutex::new(HashMap::new())),
+            metadata: json!({}),
+            rules: HashMap::new(),
             compiling: None,
+            config,
         }
     }
 
-    pub async fn add_rule(&mut self, rule: Rule) {
+    pub(crate) fn add_rule(&mut self, rule: Rule) {
         let name = rule.get_name();
-        self.rules
-            .lock()
-            .await
-            .insert(name, Arc::new(Mutex::new(rule)));
+        self.rules.insert(name, Arc::new(Mutex::new(rule)));
+    }
+    pub(crate) fn get_rules(&self) -> &HashMap<String, Arc<Mutex<Rule>>> {
+        &self.rules
     }
 
     /// Wait for specified rule compile completion
@@ -62,8 +65,6 @@ impl Context {
         let name = name.to_string();
         let notify = {
             self.rules
-                .lock()
-                .await
                 .get(&name)
                 .ok_or(anyhow!(ContextError::RuleNotFound(here!(), name)))?
                 .lock()
@@ -76,10 +77,10 @@ impl Context {
         Ok(())
     }
     /// Get metadata
-    pub async fn get(&self, name: impl ToString) -> Result<Metadata> {
+    pub fn get_metadata(&mut self, name: impl ToString) -> Result<Metadata> {
         let name = name.to_string();
-        let metadata = self.metadata.lock().await;
-        let data = metadata
+        let data = self
+            .metadata
             .as_object()
             .unwrap()
             .get(&name)
@@ -87,11 +88,9 @@ impl Context {
         Ok(data.clone())
     }
     /// Insert metadata
-    pub async fn insert(&self, name: impl ToString, value: impl Serialize) -> Result<()> {
+    pub fn insert(&mut self, name: impl ToString, value: impl Serialize) -> Result<()> {
         let metadata = to_metadata(value)?;
         self.metadata
-            .lock()
-            .await
             .as_object_mut()
             .unwrap()
             .insert(name.to_string(), metadata);
@@ -109,5 +108,28 @@ impl Context {
     /// Get compiling target file path
     pub fn target(&self) -> PathBuf {
         self.compiling.as_ref().unwrap().target()
+    }
+    /// Get config
+    pub fn config(&self) -> Config {
+        self.config.clone()
+    }
+
+    /// Get source file body
+    pub fn get_source_body(&self) -> Vec<u8> {
+        let file = self.source();
+        fs::read(&file).unwrap()
+    }
+    /// Get source file string
+    pub fn get_source_string(&self) -> String {
+        String::from_utf8(self.get_source_body()).unwrap()
+    }
+    /// Open target file to write
+    pub fn open_target(&self) -> Result<fs::File> {
+        let target = self.target();
+        let dir = target.parent().unwrap();
+        fs::create_dir_all(&dir).map_err(|e| anyhow!("Directory creation error: {:?}", e))?;
+        let file =
+            fs::File::create(&target).map_err(|e| anyhow!("Target file open error: {:?}", e))?;
+        Ok(file)
     }
 }

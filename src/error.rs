@@ -9,7 +9,7 @@ pub struct Location {
 
 macro_rules! here {
     () => {
-        Location {
+        $crate::error::Location {
             file: file!(),
             line: line!(),
         }
