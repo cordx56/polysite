@@ -52,14 +52,12 @@ mod tests {
                         .get(),
                     ),
             )
-            .await
             .add_rule(
                 Rule::new("hello")
                     .set_match(["**/*"])
                     .set_routing(routing::set_ext("txt"))
                     .set_compiler(PrintCompiler::new()),
             )
-            .await
             .build()
             .await;
         println!("{:?}", result);

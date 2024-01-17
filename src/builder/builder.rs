@@ -1,19 +1,7 @@
-use crate::{
-    error::{here, Location},
-    *,
-};
-use anyhow::{anyhow, Error, Result};
+use crate::{error::here, *};
+use anyhow::{anyhow, Result};
 use serde::Serialize;
-use thiserror::Error;
-use tokio::task::{JoinError, JoinSet};
-
-#[derive(Error, Debug)]
-pub enum BuildError {
-    #[error("Join error: {:?} on {}", .1, .0)]
-    JoinError(Location, JoinError),
-    #[error("Compile error: {} on {}", .1, .0)]
-    CompileError(Location, Error),
-}
+use tokio::task::JoinSet;
 
 pub struct Builder {
     ctx: Context,
@@ -25,14 +13,18 @@ impl Builder {
             ctx: Context::new(config),
         }
     }
-    pub async fn add_rule(mut self, rule: Rule) -> Self {
+    pub fn add_rule(mut self, rule: Rule) -> Self {
         self.ctx.add_rule(rule);
         self
     }
 
     /// Insert metadata
-    pub async fn add_context(&mut self, name: impl ToString, data: impl Serialize) -> Result<()> {
-        self.ctx.insert(name, data).await
+    pub async fn insert_metadata(
+        &mut self,
+        name: impl ToString,
+        data: impl Serialize,
+    ) -> Result<()> {
+        self.ctx.insert_metadata(name, data).await
     }
 
     /// Run build
@@ -55,7 +47,7 @@ impl Builder {
             let mut rule = rule.lock().await;
             let name = rule.get_name();
             let res = res.map_err(|e| anyhow!("Rule {}: compile error: {}", name, e))?;
-            self.ctx.insert(name, res).await?;
+            self.ctx.insert_metadata(name, res).await?;
             rule.set_finished();
         }
         Ok(())

@@ -1,6 +1,7 @@
-use crate::{CompileResult, Compiler, Compiling, Context, Metadata};
+use crate::{error::here, CompileResult, Compiler, Compiling, Context, Metadata};
 use anyhow::{anyhow, Error};
 use glob::{glob, GlobError, PatternError};
+use log::info;
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
@@ -35,6 +36,8 @@ pub struct Rule {
     compiler: Option<Arc<Box<dyn Compiler>>>,
     load: bool,
     load_notify: Arc<Notify>,
+    version: Option<String>,
+    waits: Vec<String>,
 }
 
 impl Rule {
@@ -47,6 +50,8 @@ impl Rule {
             compiler: None,
             load: false,
             load_notify: Arc::new(Notify::new()),
+            version: None,
+            waits: Vec::new(),
         }
     }
 
@@ -79,6 +84,19 @@ impl Rule {
         self
     }
 
+    /// Set compilation version
+    pub fn set_version(mut self, version: Option<String>) -> Self {
+        self.version = version;
+        self
+    }
+
+    /// Set wait rules
+    pub fn set_waits(mut self, waits: impl IntoIterator<Item = impl ToString>) -> Self {
+        let ws = waits.into_iter().map(|s| s.to_string()).collect();
+        self.waits = ws;
+        self
+    }
+
     /// Get load notify
     ///
     /// If compilation task is finished, this method returns None.
@@ -96,10 +114,24 @@ impl Rule {
         self.load_notify.notify_waiters();
     }
 
+    async fn wait_all(&self, ctx: &Context) -> Result<(), Error> {
+        let mut set = JoinSet::new();
+        for w in self.waits.iter() {
+            let ctx = ctx.clone();
+            let w = w.clone();
+            set.spawn(async move { ctx.wait(w).await });
+        }
+        while let Some(res) = set.join_next().await {
+            res.map_err(|e| anyhow!("Join error on {}: {:?}", here!(), e))??;
+        }
+        Ok(())
+    }
+
     /// Do compilation task
     ///
     /// Send notifications to all waiters when tasks are completed.
     pub(crate) async fn compile(&mut self, ctx: Context) -> CompileResult {
+        self.wait_all(&ctx).await?;
         let src_dir = ctx.config().source_dir();
         let match_globs = self
             .match_globs
@@ -137,15 +169,27 @@ impl Rule {
             let compiling = Compiling {
                 source: path,
                 target,
+                version: self.version.clone(),
             };
             let mut new_ctx = ctx.clone();
             new_ctx.set_compiling(compiling);
-            set.spawn(compiler.compile(new_ctx));
+            // If there is the version already compiled, pass the compilation
+            if new_ctx.get_version(None, None).await.is_some() {
+                continue;
+            }
+            let task = compiler.compile(new_ctx.clone());
+            set.spawn(async move { (new_ctx, task.await) });
         }
         let mut results = Vec::new();
         while let Some(res) = set.join_next().await {
-            let res = res.map_err(|e| anyhow!(CompileError::JoinError(e)))?;
+            let (ctx, res) = res.map_err(|e| anyhow!(CompileError::JoinError(e)))?;
             let res = res.map_err(|e| anyhow!(CompileError::UserError(e)))?;
+            ctx.insert_version(None, None, res.clone()).await;
+            info!(
+                "Compiled: {} -> {}",
+                ctx.source().display(),
+                ctx.target().display()
+            );
             results.push(res);
         }
         let metadata = Metadata::Array(results);

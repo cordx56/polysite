@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 polysite = { path = "../" }
 tokio = { version = "1", features = ["full"] }
+simple_logger = "4"
 
 [[example]]
 name = "simple_markdown"
