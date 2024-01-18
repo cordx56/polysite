@@ -1,12 +1,13 @@
-pub mod copy;
+pub mod file;
 pub mod markdown;
 pub mod template;
 
 use crate::*;
 use anyhow::Error;
 use std::future::Future;
+use std::sync::Arc;
 
-pub type CompileResult = Result<Metadata, Error>;
+pub type CompileResult = Result<Context, Error>;
 pub type CompilerReturn = Box<dyn Future<Output = CompileResult> + Unpin + Send>;
 
 pub trait Compiler: Send + Sync {
@@ -19,17 +20,19 @@ pub trait Compiler: Send + Sync {
     }
 }
 
+/// Compiler function
+///
+/// compiler function takes context as parameter,
+/// and returns CompilerReturn which is boxed future.
 pub trait CompileFunction: Fn(Context) -> CompilerReturn + Send + Sync {}
 impl<F> CompileFunction for F where F: Fn(Context) -> CompilerReturn + Send + Sync {}
 
+/// compiler! macro may used to make compile function
+/// which returns boxed Future
 #[macro_export]
 macro_rules! compiler {
     ($b:expr) => {
-        Box::new(Box::pin(async move {
-            use $crate::to_metadata;
-            let res = $b;
-            res.map(|v| to_metadata(v))?
-        }))
+        Box::new(Box::pin(async move { $b }))
     };
 }
 
@@ -46,5 +49,42 @@ impl GenericCompiler {
 impl Compiler for GenericCompiler {
     fn compile(&self, ctx: Context) -> CompilerReturn {
         (self.compile_method)(ctx)
+    }
+}
+
+/// pipe! macro may used to make large compiler from
+/// piping multiple compilers
+#[macro_export]
+macro_rules! pipe {
+    ($f:expr, $($n:expr),+ $(,)?) => {{
+        use std::sync::Arc;
+        $crate::PipeCompiler::new(vec![
+            Arc::new($f),
+            $(
+                Arc::new($n),
+            )+
+        ])
+    }}
+}
+
+/// Piped compiler
+pub struct PipeCompiler {
+    compilers: Vec<Arc<dyn Compiler>>,
+}
+impl PipeCompiler {
+    pub fn new(compilers: Vec<Arc<dyn Compiler>>) -> Self {
+        Self { compilers }
+    }
+}
+impl Compiler for PipeCompiler {
+    fn compile(&self, ctx: Context) -> CompilerReturn {
+        let compilers = self.compilers.clone();
+        compiler!({
+            let mut ctx = ctx;
+            for c in compilers {
+                ctx = c.compile(ctx).await?;
+            }
+            Ok(ctx)
+        })
     }
 }

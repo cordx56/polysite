@@ -24,7 +24,7 @@ impl Builder {
         name: impl ToString,
         data: impl Serialize,
     ) -> Result<()> {
-        self.ctx.insert_metadata(name, data).await
+        self.ctx.insert_global_metadata(name, data).await
     }
 
     /// Run build
@@ -36,19 +36,14 @@ impl Builder {
         for rule in rules.into_values() {
             let ctx = self.ctx.clone();
             set.spawn(async move {
-                let cloned = rule.clone();
-                let mut locked = cloned.lock().await;
-                (rule, locked.compile(ctx).await)
+                let mut rule = rule.lock().await;
+                (rule.get_name(), rule.compile(ctx).await)
             });
         }
         while let Some(join_res) = set.join_next().await {
-            let (rule, res) =
+            let (name, res) =
                 join_res.map_err(|e| anyhow!("Join error: {:?} on {}", e, here!()))?;
-            let mut rule = rule.lock().await;
-            let name = rule.get_name();
-            let res = res.map_err(|e| anyhow!("Rule {}: compile error: {}", name, e))?;
-            self.ctx.insert_metadata(name, res).await?;
-            rule.set_finished();
+            let _ctx = res.map_err(|e| anyhow!("Rule {}: compile error: {}", name, e))?;
         }
         Ok(())
     }

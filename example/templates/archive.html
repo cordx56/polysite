@@ -1,4 +1,6 @@
 {% extends "base.html" %}
 {% block body %}
-    {{ body | safe }}
+{% for post in posts %}
+    {{ post.title }}
+{% endfor %}
 {% endblock body %}

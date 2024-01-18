@@ -23,10 +23,10 @@ mod tests {
     impl Compiler for PrintCompiler {
         fn compile(&self, ctx: Context) -> CompilerReturn {
             Box::new(compiler!({
-                let src = ctx.source().to_string_lossy().to_string();
-                let tgt = ctx.target().to_string_lossy().to_string();
-                println!("{} -> {}", src, tgt);
-                Ok(Metadata::String(tgt))
+                let src = ctx.source()?;
+                let tgt = ctx.target()?;
+                println!("{} -> {}", src.display(), tgt.display());
+                Ok(ctx)
             }))
         }
     }
@@ -46,7 +46,7 @@ mod tests {
                             compiler!({
                                 ctx.wait("hello").await?;
                                 println!("{:?}", ctx.metadata().await);
-                                Ok(Metadata::Null)
+                                Ok(ctx)
                             })
                         })
                         .get(),

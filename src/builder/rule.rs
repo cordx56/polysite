@@ -1,4 +1,4 @@
-use crate::{error::here, CompileResult, Compiler, Compiling, Context, Metadata};
+use crate::{error::here, *};
 use anyhow::{anyhow, Error};
 use glob::{glob, GlobError, PatternError};
 use log::info;
@@ -36,7 +36,7 @@ pub struct Rule {
     compiler: Option<Arc<Box<dyn Compiler>>>,
     load: bool,
     load_notify: Arc<Notify>,
-    version: Option<String>,
+    version: Version,
     waits: Vec<String>,
 }
 
@@ -50,7 +50,7 @@ impl Rule {
             compiler: None,
             load: false,
             load_notify: Arc::new(Notify::new()),
-            version: None,
+            version: Version::new(None),
             waits: Vec::new(),
         }
     }
@@ -85,7 +85,7 @@ impl Rule {
     }
 
     /// Set compilation version
-    pub fn set_version(mut self, version: Option<String>) -> Self {
+    pub fn set_version(mut self, version: Version) -> Self {
         self.version = version;
         self
     }
@@ -158,6 +158,10 @@ impl Rule {
         let routing = self.routing_method.clone();
         let mut set = JoinSet::new();
         for path in paths {
+            // If there is the version already compiled, pass the compilation
+            if ctx.get_version(&self.version, &path).await.is_some() {
+                continue;
+            }
             let target = ctx
                 .config()
                 .target_dir()
@@ -166,33 +170,32 @@ impl Rule {
                 Some(r) => r(&target),
                 None => target,
             };
-            let compiling = Compiling {
-                source: path,
-                target,
-                version: self.version.clone(),
-            };
+            let compiling = Compiling::new(path, target, self.version.clone());
             let mut new_ctx = ctx.clone();
-            new_ctx.set_compiling(compiling);
-            // If there is the version already compiled, pass the compilation
-            if new_ctx.get_version(None, None).await.is_some() {
-                continue;
-            }
-            let task = compiler.compile(new_ctx.clone());
-            set.spawn(async move { (new_ctx, task.await) });
+            new_ctx.set_compiling(Some(compiling));
+            set.spawn(compiler.compile(new_ctx));
         }
         let mut results = Vec::new();
         while let Some(res) = set.join_next().await {
-            let (ctx, res) = res.map_err(|e| anyhow!(CompileError::JoinError(e)))?;
+            let res = res.map_err(|e| anyhow!(CompileError::JoinError(e)))?;
             let res = res.map_err(|e| anyhow!(CompileError::UserError(e)))?;
-            ctx.insert_version(None, None, res.clone()).await;
+            ctx.insert_version(
+                self.version.clone(),
+                res.source()?,
+                res.compiling_metadata()?,
+            )
+            .await?;
             info!(
                 "Compiled: {} -> {}",
-                ctx.source().display(),
-                ctx.target().display()
+                res.source()?.display(),
+                res.target()?.display()
             );
-            results.push(res);
+            results.push(res.compiling_metadata()?);
         }
         let metadata = Metadata::Array(results);
-        Ok(metadata)
+        ctx.insert_global_metadata(self.get_name(), metadata)
+            .await?;
+        self.set_finished();
+        Ok(ctx)
     }
 }

@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{error::here, *};
 use anyhow::{anyhow, Result};
 use serde::Serialize;
 use serde_json::json;
@@ -8,28 +8,50 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Version(String);
+impl Version {
+    pub fn new(s: Option<String>) -> Self {
+        Self(s.unwrap_or("default".to_string()))
+    }
+    pub fn get(&self) -> String {
+        self.0.clone()
+    }
+}
+
+#[derive(Clone)]
 pub struct Compiling {
-    pub(crate) source: PathBuf,
-    pub(crate) target: PathBuf,
-    pub(crate) version: Option<String>,
+    source: PathBuf,
+    target: PathBuf,
+    version: Version,
+    metadata: Metadata,
 }
 impl Compiling {
-    pub fn source(&self) -> PathBuf {
-        self.source.clone()
-    }
-    pub fn target(&self) -> PathBuf {
-        self.target.clone()
-    }
-    pub fn version(&self) -> String {
-        self.version.clone().unwrap_or("default".to_string())
+    pub fn new(source: PathBuf, target: PathBuf, version: Version) -> Self {
+        let mut metadata = new_object();
+        let obj = metadata.as_object_mut().unwrap();
+        obj.insert(
+            "source".to_string(),
+            Metadata::String(source.to_string_lossy().to_string()),
+        );
+        obj.insert(
+            "target".to_string(),
+            Metadata::String(target.to_string_lossy().to_string()),
+        );
+        obj.insert("version".to_string(), Metadata::String(version.get()));
+        Self {
+            source,
+            target,
+            version,
+            metadata,
+        }
     }
 }
 
 #[derive(Clone)]
 pub struct Context {
     metadata: Arc<Mutex<Metadata>>,
-    versions: Arc<Mutex<HashMap<String, HashMap<String, Metadata>>>>,
+    versions: Arc<Mutex<HashMap<Version, HashMap<PathBuf, Metadata>>>>,
     rules: HashMap<String, Arc<Mutex<Rule>>>,
     compiling: Option<Compiling>,
     config: Config,
@@ -72,11 +94,24 @@ impl Context {
     }
     /// Get metadata
     pub async fn metadata(&self) -> Metadata {
-        self.metadata.lock().await.clone()
+        let mut global = self.metadata.lock().await.clone();
+        if let Some(c) = &self.compiling {
+            global = join_metadata(global, c.metadata.clone());
+        }
+        global
     }
-    /// Insert metadata
-    pub async fn insert_metadata(
-        &mut self,
+    /// Get compiling metadata
+    pub fn compiling_metadata(&self) -> Result<Metadata> {
+        Ok(self
+            .compiling
+            .as_ref()
+            .ok_or(anyhow!("Not compiling on {}", here!()))?
+            .metadata
+            .clone())
+    }
+    /// Insert global metadata
+    pub async fn insert_global_metadata(
+        &self,
         name: impl ToString,
         value: impl Serialize,
     ) -> Result<()> {
@@ -89,26 +124,37 @@ impl Context {
             .insert(name.to_string(), metadata);
         Ok(())
     }
+    /// Insert global metadata
+    pub async fn insert_compiling_metadata(
+        &mut self,
+        name: impl ToString,
+        value: impl Serialize,
+    ) -> Result<()> {
+        let metadata = to_metadata(value)?;
+        self.compiling
+            .as_mut()
+            .ok_or(anyhow!("Not compiling on {}", here!()))?
+            .metadata
+            .as_object_mut()
+            .unwrap()
+            .insert(name.to_string(), metadata);
+        Ok(())
+    }
 
     /// Compiling version
-    pub fn version(&self) -> String {
-        if let Some(c) = &self.compiling {
-            c.version()
-        } else {
-            "default".to_string()
-        }
+    pub fn version(&self) -> Result<Version> {
+        Ok(self
+            .compiling
+            .as_ref()
+            .ok_or(anyhow!("Not compiling on {}", here!()))?
+            .version
+            .clone())
     }
     /// Get version
-    pub async fn get_version(
-        &self,
-        version: Option<String>,
-        path: Option<&PathBuf>,
-    ) -> Option<Metadata> {
-        let version = version.unwrap_or(self.version());
+    pub async fn get_version(&self, version: &Version, path: &PathBuf) -> Option<Metadata> {
         let versions = self.versions.lock().await;
-        if let Some(v) = versions.get(&version) {
-            v.get(&path.unwrap_or(&self.source()).to_string_lossy().to_string())
-                .cloned()
+        if let Some(v) = versions.get(version) {
+            v.get(path).cloned()
         } else {
             None
         }
@@ -116,35 +162,43 @@ impl Context {
     /// Insert version
     pub async fn insert_version(
         &self,
-        version: Option<String>,
-        path: Option<&PathBuf>,
+        version: Version,
+        path: PathBuf,
         metadata: Metadata,
-    ) {
-        let version = version.unwrap_or(self.version());
+    ) -> Result<()> {
         let mut versions = self.versions.lock().await;
-        let version = if let Some(v) = versions.get_mut(&version) {
-            v
-        } else {
-            versions.insert(version.clone(), HashMap::new());
-            versions.get_mut(&version).unwrap()
+        let version = match versions.get_mut(&version) {
+            Some(v) => v,
+            None => {
+                versions.insert(version.clone(), HashMap::new());
+                versions.get_mut(&version).unwrap()
+            }
         };
-        version.insert(
-            path.unwrap_or(&self.source()).to_string_lossy().to_string(),
-            metadata,
-        );
+        version.insert(path, metadata);
+        Ok(())
     }
 
-    pub(crate) fn set_compiling(&mut self, compiling: Compiling) {
-        self.compiling = Some(compiling);
+    pub(crate) fn set_compiling(&mut self, compiling: Option<Compiling>) {
+        self.compiling = compiling;
     }
 
     /// Get compiling source file path
-    pub fn source(&self) -> PathBuf {
-        self.compiling.as_ref().unwrap().source()
+    pub fn source(&self) -> Result<PathBuf> {
+        Ok(self
+            .compiling
+            .as_ref()
+            .ok_or(anyhow!("Not compiling on {}", here!()))?
+            .source
+            .clone())
     }
     /// Get compiling target file path
-    pub fn target(&self) -> PathBuf {
-        self.compiling.as_ref().unwrap().target()
+    pub fn target(&self) -> Result<PathBuf> {
+        Ok(self
+            .compiling
+            .as_ref()
+            .ok_or(anyhow!("Not compiling on {}", here!()))?
+            .target
+            .clone())
     }
     /// Get config
     pub fn config(&self) -> Config {
@@ -152,23 +206,24 @@ impl Context {
     }
 
     /// Get source file body
-    pub fn get_source_body(&self) -> Vec<u8> {
-        let file = self.source();
-        fs::read(&file).unwrap()
+    pub fn get_source_body(&self) -> Result<Vec<u8>> {
+        let file = self.source()?;
+        fs::read(&file).map_err(|e| anyhow!("File read error: {:?}", e))
     }
     /// Get source file string
-    pub fn get_source_string(&self) -> String {
-        String::from_utf8(self.get_source_body()).unwrap()
+    pub fn get_source_string(&self) -> Result<String> {
+        String::from_utf8(self.get_source_body()?)
+            .map_err(|e| anyhow!("String encode error: {:?}", e))
     }
     pub fn create_target_dir(&self) -> Result<()> {
-        let target = self.target();
+        let target = self.target()?;
         let dir = target.parent().unwrap();
         fs::create_dir_all(&dir).map_err(|e| anyhow!("Directory creation error: {:?}", e))
     }
     /// Open target file to write
     pub fn open_target(&self) -> Result<fs::File> {
         self.create_target_dir()?;
-        let target = self.target();
+        let target = self.target()?;
         let file =
             fs::File::create(&target).map_err(|e| anyhow!("Target file open error: {:?}", e))?;
         Ok(file)
