@@ -1,5 +1,6 @@
 pub mod copy;
 pub mod markdown;
+pub mod template;
 
 use crate::*;
 use anyhow::Error;

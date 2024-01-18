@@ -1,27 +1,31 @@
+use super::template::TemplateEngine;
 use crate::{error::here, *};
 use anyhow::{anyhow, Ok, Result};
 use pulldown_cmark::{html::push_html, Options, Parser};
 use std::io::Write;
+use std::sync::Arc;
 
 pub struct MarkdownCompiler {
     template: String,
-    tera: tera::Tera,
+    template_engine: Arc<TemplateEngine>,
     options: Options,
 }
 
 impl MarkdownCompiler {
+    /// Create markdown compiler
+    ///
+    /// Pass template engine ref, template name and
+    /// markdown rendering option
     pub fn new(
-        template_dir: impl AsRef<str>,
+        template_engine: Arc<TemplateEngine>,
         template: impl ToString,
         options: Option<Options>,
     ) -> Result<Self> {
         let template = template.to_string();
-        let tera = tera::Tera::new(template_dir.as_ref())
-            .map_err(|e| anyhow!("Template error on {}: {:?}", here!(), e))?;
         let options = options.unwrap_or(Options::all());
         Ok(Self {
             template,
-            tera,
+            template_engine,
             options,
         })
     }
@@ -30,7 +34,7 @@ impl MarkdownCompiler {
 impl Compiler for MarkdownCompiler {
     fn compile(&self, ctx: Context) -> CompilerReturn {
         let template = self.template.clone();
-        let tera = self.tera.clone();
+        let template_engine = self.template_engine.clone();
         let options = self.options.clone();
         Box::new(compiler!({
             let body = ctx.get_source_string();
@@ -57,10 +61,7 @@ impl Compiler for MarkdownCompiler {
                 .as_object_mut()
                 .unwrap()
                 .extend(file_metadaata.as_object().unwrap().clone().into_iter());
-            let tera_ctx = tera::Context::from_serialize(metadata).unwrap();
-            let out = tera
-                .render(&template, &tera_ctx)
-                .map_err(|e| anyhow!("Tera rendering error on {}: {:?}", here!(), e))?;
+            let out = template_engine.render(&template, &metadata)?;
             target
                 .write(out.as_bytes())
                 .map_err(|e| anyhow!("Failed to write file on {}: {:?}", here!(), e))?;
