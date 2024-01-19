@@ -13,7 +13,6 @@ pub use router::*;
 mod tests {
     use super::*;
     use anyhow::Ok;
-    use std::path::PathBuf;
 
     struct PrintCompiler;
     impl PrintCompiler {
@@ -34,8 +33,7 @@ mod tests {
 
     #[tokio::test]
     async fn build_site() {
-        let mut config = Config::default();
-        config.set_source_dir(Some(PathBuf::from("src")));
+        let config = Config::default().set_source_dir("src");
         let builder = Builder::new(config);
         let result = builder
             // Add one rule as build step

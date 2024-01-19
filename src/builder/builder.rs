@@ -1,6 +1,8 @@
-use crate::{error::here, *};
+use crate::*;
 use anyhow::{anyhow, Result};
+use log::info;
 use serde::Serialize;
+use std::fs::remove_dir_all;
 use tokio::task::JoinSet;
 
 pub struct Builder {
@@ -42,6 +44,13 @@ impl Builder {
     ///
     /// Run all registered build steps
     pub async fn build(self) -> Result<()> {
+        let conf = self.ctx.config();
+        let target_dir = conf.target_dir();
+        if conf.target_clean() && target_dir.is_dir() {
+            remove_dir_all(&target_dir)
+                .map_err(|e| anyhow!("Target directory cleaning error: {:?}", e))?;
+            info!("Target directory ({}) cleaned", target_dir.display());
+        }
         for step in self.steps.into_iter() {
             let mut set = JoinSet::new();
             for mut rule in step.into_iter() {
@@ -50,8 +59,7 @@ impl Builder {
                 set.spawn(async move { (rule.get_name(), rule.compile(ctx).await) });
             }
             while let Some(join_res) = set.join_next().await {
-                let (name, res) =
-                    join_res.map_err(|e| anyhow!("Join error: {:?} on {}", e, here!()))?;
+                let (name, res) = join_res.map_err(|e| anyhow!("Join error: {:?}", e))?;
                 let _ctx = res.map_err(|e| anyhow!("Rule {}: compile error: {}", name, e))?;
             }
         }
