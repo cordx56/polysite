@@ -11,3 +11,7 @@ simple_logger = "4"
 [[example]]
 name = "simple_markdown"
 path = "simple_markdown.rs"
+
+[[example]]
+name = "concurrency_test"
+path = "concurrency_test.rs"
