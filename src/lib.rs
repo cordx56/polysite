@@ -2,11 +2,12 @@ pub mod builder;
 pub mod compiler;
 pub mod config;
 pub mod error;
-pub mod routing;
+pub mod router;
 
 pub use builder::*;
 pub use compiler::*;
 pub use config::Config;
+pub use router::*;
 
 #[cfg(test)]
 mod tests {
@@ -14,10 +15,10 @@ mod tests {
     use anyhow::Ok;
     use std::path::PathBuf;
 
-    struct PrintCompiler {}
+    struct PrintCompiler;
     impl PrintCompiler {
-        fn new() -> Box<Self> {
-            Box::new(Self {})
+        fn new() -> Self {
+            Self
         }
     }
     impl Compiler for PrintCompiler {
@@ -37,27 +38,38 @@ mod tests {
         config.set_source_dir(Some(PathBuf::from("src")));
         let builder = Builder::new(config);
         let result = builder
-            .add_rule(
+            // Add one rule as build step
+            .add_step([Rule::new("hello")
+                .set_globs(["builder/**/*.rs"])
+                .set_compiler(PrintCompiler::new().get())])
+            // Rules in same step will build concurrently, but
+            // the file matching is evaluated in order
+            .add_step([
                 Rule::new("compile")
-                    .set_match(["**/*"])
-                    .set_routing(routing::set_ext("txt"))
+                    .set_globs(["compiler/*"])
+                    .set_router(SetExtRouter::new("txt").get())
                     .set_compiler(
                         GenericCompiler::from(|ctx| {
                             compiler!({
-                                ctx.wait("hello").await?;
-                                println!("{:?}", ctx.metadata().await);
+                                println!("{}", ctx.source()?.display());
                                 Ok(ctx)
                             })
                         })
                         .get(),
                     ),
-            )
-            .add_rule(
-                Rule::new("hello")
-                    .set_match(["**/*"])
-                    .set_routing(routing::set_ext("txt"))
-                    .set_compiler(PrintCompiler::new()),
-            )
+                Rule::new("compile")
+                    .set_globs(["**/*"])
+                    .set_router(SetExtRouter::new("txt").get())
+                    .set_compiler(
+                        GenericCompiler::from(|ctx| {
+                            compiler!({
+                                println!("{}", ctx.source()?.display());
+                                Ok(ctx)
+                            })
+                        })
+                        .get(),
+                    ),
+            ])
             .build()
             .await;
         println!("{:?}", result);

@@ -12,11 +12,11 @@ pub type CompilerReturn = Box<dyn Future<Output = CompileResult> + Unpin + Send>
 
 pub trait Compiler: Send + Sync {
     fn compile(&self, ctx: Context) -> CompilerReturn;
-    fn get(self) -> Box<Self>
+    fn get(self) -> Arc<Self>
     where
         Self: Sized,
     {
-        Box::new(self)
+        Arc::new(self)
     }
 }
 

@@ -52,7 +52,6 @@ impl Compiling {
 pub struct Context {
     metadata: Arc<Mutex<Metadata>>,
     versions: Arc<Mutex<HashMap<Version, HashMap<PathBuf, Metadata>>>>,
-    rules: HashMap<String, Arc<Mutex<Rule>>>,
     compiling: Option<Compiling>,
     config: Config,
 }
@@ -62,36 +61,11 @@ impl Context {
         Self {
             metadata: Arc::new(Mutex::new(json!({}))),
             versions: Arc::new(Mutex::new(HashMap::new())),
-            rules: HashMap::new(),
             compiling: None,
             config,
         }
     }
 
-    pub(crate) fn add_rule(&mut self, rule: Rule) {
-        let name = rule.get_name();
-        self.rules.insert(name, Arc::new(Mutex::new(rule)));
-    }
-    pub(crate) fn get_rules(&self) -> &HashMap<String, Arc<Mutex<Rule>>> {
-        &self.rules
-    }
-
-    /// Wait for specified rule compile completion
-    pub async fn wait(&self, name: impl AsRef<str>) -> Result<()> {
-        let name = name.as_ref();
-        let notify = {
-            self.rules
-                .get(name)
-                .ok_or(anyhow!("Rule {} not found", name))?
-                .lock()
-                .await
-                .get_load_notify()
-        };
-        if let Some(n) = notify {
-            n.notified().await;
-        }
-        Ok(())
-    }
     /// Get metadata
     pub async fn metadata(&self) -> Metadata {
         let mut global = self.metadata.lock().await.clone();
@@ -124,7 +98,7 @@ impl Context {
             .insert(name.to_string(), metadata);
         Ok(())
     }
-    /// Insert global metadata
+    /// Insert compiling metadata
     pub async fn insert_compiling_metadata(
         &mut self,
         name: impl ToString,
@@ -141,7 +115,7 @@ impl Context {
         Ok(())
     }
 
-    /// Compiling version
+    /// Get compiling version
     pub fn version(&self) -> Result<Version> {
         Ok(self
             .compiling

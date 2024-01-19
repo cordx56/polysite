@@ -1,57 +1,37 @@
-use crate::{error::here, *};
+use crate::*;
 use anyhow::{anyhow, Error};
-use glob::{glob, GlobError, PatternError};
+use glob::glob;
 use log::info;
 use std::path::PathBuf;
 use std::sync::Arc;
-use thiserror::Error;
-use tokio::{
-    sync::Notify,
-    task::{JoinError, JoinSet},
-};
+use tokio::task::JoinSet;
 
-#[derive(Error, Debug)]
-pub enum CompileError {
-    #[error("No globs are registered")]
-    NoGlobs,
-    #[error("No compiler is registered")]
-    NoCompiler,
-    #[error("Glob pattern error: {:?}", .0)]
-    GlobPattern(PatternError),
-    #[error("Glob error: {:?}", .0)]
-    GlobError(GlobError),
-    #[error("Join error: {:?}", .0)]
-    JoinError(JoinError),
-    #[error("{}", .0)]
-    UserError(Error),
+#[derive(Debug)]
+pub enum Conditions {
+    Globs(Vec<String>),
+    Create(Vec<String>),
 }
-
-pub trait RoutingMethod: Fn(&PathBuf) -> PathBuf + Send + Sync {}
-impl<F> RoutingMethod for F where F: Fn(&PathBuf) -> PathBuf + Send + Sync {}
 
 pub struct Rule {
     name: String,
-    match_globs: Option<Vec<String>>,
-    routing_method: Option<Arc<Box<dyn RoutingMethod>>>,
-    compiler: Option<Arc<Box<dyn Compiler>>>,
-    load: bool,
-    load_notify: Arc<Notify>,
+    conditions: Option<Conditions>,
+    matched: Option<Vec<PathBuf>>,
+    router: Option<Arc<dyn Router>>,
+    compiler: Option<Arc<dyn Compiler>>,
     version: Version,
-    waits: Vec<String>,
 }
 
 impl Rule {
+    /// Create new rule
     pub fn new(name: impl ToString) -> Self {
         let name = name.to_string();
         Rule {
             name,
-            match_globs: None,
-            routing_method: None,
+            conditions: None,
+            matched: None,
+            router: None,
             compiler: None,
-            load: false,
-            load_notify: Arc::new(Notify::new()),
             version: Version::new(None),
-            waits: Vec::new(),
         }
     }
 
@@ -61,26 +41,26 @@ impl Rule {
     }
 
     /// Set source file globs
-    pub fn set_match(mut self, globs: impl IntoIterator<Item = impl ToString>) -> Self {
+    pub fn set_globs(mut self, globs: impl IntoIterator<Item = impl ToString>) -> Self {
         let gs = globs.into_iter().map(|s| s.to_string()).collect();
-        self.match_globs = Some(gs);
+        self.conditions = Some(Conditions::Globs(gs));
         self
     }
 
-    /// Set routing method
+    /// Set router
     ///
-    /// The function passed to this method will be used to transform source file path to
+    /// The router passed to this method will be used to transform source file path to
     /// target file path.
-    pub fn set_routing(mut self, routing_method: impl RoutingMethod + 'static) -> Self {
-        self.routing_method = Some(Arc::new(Box::new(routing_method)));
+    pub fn set_router(mut self, router: Arc<dyn Router>) -> Self {
+        self.router = Some(router);
         self
     }
 
-    /// Set compiler method
+    /// Set compiler
     ///
-    /// The function passed to this method will be called in compilation task.
-    pub fn set_compiler(mut self, compiler: Box<dyn Compiler>) -> Self {
-        self.compiler = Some(Arc::new(compiler));
+    /// The compiler passed to this method will be called in compilation task.
+    pub fn set_compiler(mut self, compiler: Arc<dyn Compiler>) -> Self {
+        self.compiler = Some(compiler);
         self
     }
 
@@ -90,40 +70,49 @@ impl Rule {
         self
     }
 
-    /// Set wait rules
-    pub fn set_waits(mut self, waits: impl IntoIterator<Item = impl ToString>) -> Self {
-        let ws = waits.into_iter().map(|s| s.to_string()).collect();
-        self.waits = ws;
-        self
-    }
-
-    /// Get load notify
-    ///
-    /// If compilation task is finished, this method returns None.
-    /// Otherwise this method returns Arc<tokio::sync::Notify>.
-    pub(crate) fn get_load_notify(&self) -> Option<Arc<Notify>> {
-        if self.load {
-            None
-        } else {
-            Some(self.load_notify.clone())
+    /// Evaluate conditions and save it's result
+    pub(super) async fn eval_conditions(&mut self, ctx: &Context) -> Result<(), Error> {
+        let src_dir = ctx.config().source_dir();
+        let paths: Vec<_> = match self
+            .conditions
+            .as_ref()
+            .ok_or(anyhow!("No conditions are specified!"))?
+        {
+            Conditions::Globs(globs) => {
+                let globs = globs
+                    .iter()
+                    .map(|g| src_dir.join(PathBuf::from(g)).to_string_lossy().to_string());
+                let paths = globs
+                    .map(|g| glob(&g))
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| anyhow!("Glob pattern error: {:?}", e))?
+                    .into_iter()
+                    .map(|p| p.collect::<Result<Vec<_>, _>>())
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| anyhow!("Glob error: {:?}", e))?
+                    .into_iter()
+                    .flatten()
+                    .filter(|p| p.is_file())
+                    .collect();
+                paths
+            }
+            Conditions::Create(paths) => {
+                let paths = paths
+                    .iter()
+                    .map(|p| src_dir.join(PathBuf::from(p)))
+                    .collect();
+                paths
+            }
+        };
+        let mut res = Vec::new();
+        for p in paths.into_iter() {
+            if ctx.get_version(&self.version, &p).await.is_none() {
+                ctx.insert_version(self.version.clone(), p.clone(), Metadata::Null)
+                    .await?;
+                res.push(p)
+            }
         }
-    }
-    /// Mark as compilation finished
-    pub(crate) fn set_finished(&mut self) {
-        self.load = true;
-        self.load_notify.notify_waiters();
-    }
-
-    async fn wait_all(&self, ctx: &Context) -> Result<(), Error> {
-        let mut set = JoinSet::new();
-        for w in self.waits.iter() {
-            let ctx = ctx.clone();
-            let w = w.clone();
-            set.spawn(async move { ctx.wait(w).await });
-        }
-        while let Some(res) = set.join_next().await {
-            res.map_err(|e| anyhow!("Join error on {}: {:?}", here!(), e))??;
-        }
+        self.matched = Some(res);
         Ok(())
     }
 
@@ -131,43 +120,24 @@ impl Rule {
     ///
     /// Send notifications to all waiters when tasks are completed.
     pub(crate) async fn compile(&mut self, ctx: Context) -> CompileResult {
-        self.wait_all(&ctx).await?;
-        let src_dir = ctx.config().source_dir();
-        let match_globs = self
-            .match_globs
-            .as_ref()
-            .ok_or(anyhow!(CompileError::NoGlobs))?
-            .iter()
-            .map(|g| src_dir.join(PathBuf::from(g)).to_string_lossy().to_string());
-        let paths = match_globs
-            .map(|g| glob(&g))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| anyhow!(CompileError::GlobPattern(e)))?
-            .into_iter()
-            .map(|p| p.collect::<Result<Vec<_>, _>>())
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| anyhow!(CompileError::GlobError(e)))?
-            .into_iter()
-            .flatten()
-            .filter(|p| p.is_file())
-            .collect::<Vec<_>>();
+        let matched = self
+            .matched
+            .clone()
+            .ok_or(anyhow!("Condition is not evaluated"))?;
         let compiler = self
             .compiler
             .clone()
-            .ok_or(anyhow!(CompileError::NoCompiler))?;
-        let routing = self.routing_method.clone();
+            .ok_or(anyhow!("No compiler is registered"))?;
+        let router = self.router.clone();
         let mut set = JoinSet::new();
-        for path in paths {
-            // If there is the version already compiled, pass the compilation
-            if ctx.get_version(&self.version, &path).await.is_some() {
-                continue;
-            }
+        for path in matched {
+            let src_dir = ctx.config().source_dir();
             let target = ctx
                 .config()
                 .target_dir()
-                .join(path.strip_prefix(&src_dir).unwrap());
-            let target = match &routing {
-                Some(r) => r(&target),
+                .join(path.strip_prefix(&src_dir).unwrap_or(&path));
+            let target = match &router {
+                Some(r) => r.route(target),
                 None => target,
             };
             let compiling = Compiling::new(path, target, self.version.clone());
@@ -177,8 +147,8 @@ impl Rule {
         }
         let mut results = Vec::new();
         while let Some(res) = set.join_next().await {
-            let res = res.map_err(|e| anyhow!(CompileError::JoinError(e)))?;
-            let res = res.map_err(|e| anyhow!(CompileError::UserError(e)))?;
+            let res = res.map_err(|e| anyhow!("Join error: {:?}", e))?;
+            let res = res.map_err(|e| anyhow!("Compile error: {}", e))?;
             ctx.insert_version(
                 self.version.clone(),
                 res.source()?,
@@ -195,7 +165,6 @@ impl Rule {
         let metadata = Metadata::Array(results);
         ctx.insert_global_metadata(self.get_name(), metadata)
             .await?;
-        self.set_finished();
         Ok(ctx)
     }
 }
