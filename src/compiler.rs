@@ -1,5 +1,6 @@
 pub mod file;
 pub mod markdown;
+pub mod snapshot;
 pub mod template;
 
 use crate::*;
@@ -40,6 +41,9 @@ pub struct GenericCompiler {
     compile_method: Box<dyn CompileFunction>,
 }
 impl GenericCompiler {
+    pub fn empty() -> Self {
+        Self::from(|ctx| compiler!(Ok(ctx)))
+    }
     pub fn from<F: CompileFunction + 'static>(f: F) -> Self {
         Self {
             compile_method: Box::new(f),
@@ -57,11 +61,10 @@ impl Compiler for GenericCompiler {
 #[macro_export]
 macro_rules! pipe {
     ($f:expr, $($n:expr),+ $(,)?) => {{
-        use std::sync::Arc;
         $crate::PipeCompiler::new(vec![
-            Arc::new($f),
+            $f.get(),
             $(
-                Arc::new($n),
+                $n.get(),
             )+
         ])
     }}

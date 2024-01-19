@@ -1,7 +1,8 @@
 use crate::{error::here, *};
-use anyhow::{anyhow, Ok, Result};
+use anyhow::anyhow;
 use file::{FileReader, FileWriter};
 use pulldown_cmark::{html::push_html, Options, Parser};
+use snapshot::{SaveSnapshot, WaitSnapshot};
 use std::sync::Arc;
 use template::{TemplateEngine, TemplateRenderer};
 
@@ -47,6 +48,7 @@ pub struct MarkdownCompiler {
     template: String,
     template_engine: Arc<TemplateEngine>,
     options: Option<Options>,
+    wait_snapshots: WaitSnapshot,
 }
 impl MarkdownCompiler {
     /// Create markdown compiler
@@ -57,13 +59,18 @@ impl MarkdownCompiler {
         template_engine: Arc<TemplateEngine>,
         template: impl ToString,
         options: Option<Options>,
-    ) -> Result<Self> {
+    ) -> Self {
         let template = template.to_string();
-        Ok(Self {
+        Self {
             template,
             template_engine,
             options,
-        })
+            wait_snapshots: WaitSnapshot::new(),
+        }
+    }
+    pub fn wait_snapshot(mut self, rule: impl ToString, until: usize) -> Self {
+        self.wait_snapshots = self.wait_snapshots.wait(rule, until);
+        self
     }
 }
 impl Compiler for MarkdownCompiler {
@@ -71,9 +78,12 @@ impl Compiler for MarkdownCompiler {
         let template = self.template.clone();
         let template_engine = self.template_engine.clone();
         let options = self.options.clone();
+        let wait_snapshots = self.wait_snapshots.clone();
         let compiler = pipe!(
             FileReader::new(),
             MarkdownRenderer::new(options),
+            SaveSnapshot::new(),
+            wait_snapshots,
             TemplateRenderer::new(template_engine, template),
             FileWriter::new(),
         );

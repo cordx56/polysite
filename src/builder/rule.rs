@@ -1,3 +1,4 @@
+use super::snapshot::*;
 use crate::*;
 use anyhow::{anyhow, Error};
 use glob::glob;
@@ -135,21 +136,40 @@ impl Rule {
             .clone()
             .ok_or(anyhow!("No compiler is registered"))?;
         let router = self.router.clone();
-        let mut set = JoinSet::new();
+        let snapshot_manager = SnapshotManager::new();
+        let mut tasks = Vec::new();
         for path in matched {
             let src_dir = ctx.config().source_dir();
             let target = ctx
                 .config()
                 .target_dir()
                 .join(path.strip_prefix(&src_dir).unwrap_or(&path));
+            // Apply router
             let target = match &router {
                 Some(r) => r.route(target),
                 None => target,
             };
-            let compiling = Compiling::new(path, target, self.version.clone());
+            // Make Snapshot stage
+            let snapshot_stage = SnapshotStage::new();
+            snapshot_manager.push(snapshot_stage.clone()).await;
+            // Make compiling data
+            let compiling = Compiling::new(
+                self.get_name(),
+                path,
+                target,
+                self.version.clone(),
+                snapshot_stage,
+            );
             let mut new_ctx = ctx.clone();
             new_ctx.set_compiling(Some(compiling));
-            set.spawn(compiler.compile(new_ctx));
+            tasks.push(compiler.compile(new_ctx));
+        }
+        ctx.register_snapshot_manager(self.get_name(), snapshot_manager)
+            .await;
+        // Start compilation tasks
+        let mut set = JoinSet::new();
+        for task in tasks {
+            set.spawn(task);
         }
         let mut results = Vec::new();
         while let Some(res) = set.join_next().await {

@@ -12,7 +12,6 @@ async fn main() {
                 .set_router(SetExtRouter::new("html").get())
                 .set_compiler(
                     markdown::MarkdownCompiler::new(template_engine.clone(), "index.html", None)
-                        .unwrap()
                         .get(),
                 ),
             Rule::new("markdown")
@@ -20,7 +19,6 @@ async fn main() {
                 .set_router(SetExtRouter::new("html").get())
                 .set_compiler(
                     markdown::MarkdownCompiler::new(template_engine.clone(), "index.html", None)
-                        .unwrap()
                         .get(),
                 ),
             Rule::new("others")

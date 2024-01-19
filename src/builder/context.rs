@@ -1,3 +1,4 @@
+use super::snapshot::*;
 use crate::{error::here, *};
 use anyhow::{anyhow, Result};
 use serde::Serialize;
@@ -20,14 +21,22 @@ impl Version {
 }
 
 #[derive(Clone)]
-pub struct Compiling {
+pub(crate) struct Compiling {
+    rule: String,
     source: PathBuf,
     target: PathBuf,
     version: Version,
     metadata: Metadata,
+    snapshot_stage: SnapshotStage,
 }
 impl Compiling {
-    pub fn new(source: PathBuf, target: PathBuf, version: Version) -> Self {
+    pub fn new(
+        rule: String,
+        source: PathBuf,
+        target: PathBuf,
+        version: Version,
+        snapshot_stage: SnapshotStage,
+    ) -> Self {
         let mut metadata = new_object();
         let obj = metadata.as_object_mut().unwrap();
         obj.insert(
@@ -40,10 +49,12 @@ impl Compiling {
         );
         obj.insert("version".to_string(), Metadata::String(version.get()));
         Self {
+            rule,
             source,
             target,
             version,
             metadata,
+            snapshot_stage,
         }
     }
 }
@@ -53,6 +64,7 @@ pub struct Context {
     metadata: Arc<Mutex<Metadata>>,
     versions: Arc<Mutex<HashMap<Version, HashMap<PathBuf, Metadata>>>>,
     compiling: Option<Compiling>,
+    snapshot_managers: Arc<Mutex<HashMap<String, SnapshotManager>>>,
     config: Config,
 }
 
@@ -62,6 +74,7 @@ impl Context {
             metadata: Arc::new(Mutex::new(json!({}))),
             versions: Arc::new(Mutex::new(HashMap::new())),
             compiling: None,
+            snapshot_managers: Arc::new(Mutex::new(HashMap::new())),
             config,
         }
     }
@@ -154,6 +167,52 @@ impl Context {
 
     pub(crate) fn set_compiling(&mut self, compiling: Option<Compiling>) {
         self.compiling = compiling;
+    }
+
+    /// Register SnapshotManager
+    pub(crate) async fn register_snapshot_manager(&self, s: impl ToString, m: SnapshotManager) {
+        self.snapshot_managers.lock().await.insert(s.to_string(), m);
+    }
+    /// Wait snapshot
+    pub async fn wait_snapshot_until(&self, name: impl ToString, stage: usize) -> Result<()> {
+        let name = name.to_string();
+        self.snapshot_managers
+            .lock()
+            .await
+            .get(&name)
+            .ok_or(anyhow!("Rule {} not found", name))?
+            .wait_until(stage)
+            .await;
+        Ok(())
+    }
+    /// Save current compiling metadata as snapshot
+    pub async fn save_snapshot(&self) -> Result<()> {
+        let rule = self.rule()?;
+        let compiling_metadata = self.compiling_metadata()?;
+        let mut locked = self.metadata.lock().await;
+        let obj = locked.as_object_mut().unwrap();
+        if let Some(Metadata::Array(a)) = obj.get_mut(&rule) {
+            a.push(compiling_metadata);
+        } else {
+            obj.insert(rule, Metadata::Array(vec![compiling_metadata]));
+        }
+        self.compiling
+            .as_ref()
+            .unwrap()
+            .snapshot_stage
+            .notify_waiters()
+            .await;
+        Ok(())
+    }
+
+    /// Get compiling rule name
+    pub fn rule(&self) -> Result<String> {
+        Ok(self
+            .compiling
+            .as_ref()
+            .ok_or(anyhow!("Not compiling on {}", here!()))?
+            .rule
+            .clone())
     }
 
     /// Get compiling source file path
