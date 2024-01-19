@@ -48,7 +48,6 @@ pub struct MarkdownCompiler {
     template_engine: Arc<TemplateEngine>,
     options: Option<Options>,
 }
-
 impl MarkdownCompiler {
     /// Create markdown compiler
     ///
@@ -67,7 +66,6 @@ impl MarkdownCompiler {
         })
     }
 }
-
 impl Compiler for MarkdownCompiler {
     fn compile(&self, ctx: Context) -> CompilerReturn {
         let template = self.template.clone();

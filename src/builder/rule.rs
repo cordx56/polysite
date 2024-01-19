@@ -46,6 +46,12 @@ impl Rule {
         self.conditions = Some(Conditions::Globs(gs));
         self
     }
+    /// Set source file creation
+    pub fn set_create(mut self, create: impl IntoIterator<Item = impl ToString>) -> Self {
+        let create = create.into_iter().map(|s| s.to_string()).collect();
+        self.conditions = Some(Conditions::Create(create));
+        self
+    }
 
     /// Set router
     ///
