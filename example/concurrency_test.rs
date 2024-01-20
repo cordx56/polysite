@@ -1,4 +1,4 @@
-use polysite::*;
+use polysite::{compiler::utils::GenericCompiler, *};
 use std::{thread, time};
 
 #[tokio::main]

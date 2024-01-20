@@ -9,6 +9,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+pub const RULE_META: &str = "_rule";
+pub const SOURCE_FILE_META: &str = "_source";
+pub const TARGET_FILE_META: &str = "_target";
+pub const VERSION_META: &str = "_version";
+pub const BODY_META: &str = "_body";
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Version(String);
 impl Version {
@@ -22,37 +28,13 @@ impl Version {
 
 #[derive(Clone)]
 pub(crate) struct Compiling {
-    rule: String,
-    source: PathBuf,
-    target: PathBuf,
-    version: Version,
     metadata: Metadata,
     snapshot_stage: SnapshotStage,
 }
 impl Compiling {
-    pub fn new(
-        rule: String,
-        source: PathBuf,
-        target: PathBuf,
-        version: Version,
-        snapshot_stage: SnapshotStage,
-    ) -> Self {
-        let mut metadata = new_object();
-        let obj = metadata.as_object_mut().unwrap();
-        obj.insert(
-            "source".to_string(),
-            Metadata::String(source.to_string_lossy().to_string()),
-        );
-        obj.insert(
-            "target".to_string(),
-            Metadata::String(target.to_string_lossy().to_string()),
-        );
-        obj.insert("version".to_string(), Metadata::String(version.get()));
+    pub fn new(snapshot_stage: SnapshotStage) -> Self {
+        let metadata = new_object();
         Self {
-            rule,
-            source,
-            target,
-            version,
             metadata,
             snapshot_stage,
         }
@@ -88,13 +70,12 @@ impl Context {
         global
     }
     /// Get compiling metadata
-    pub fn compiling_metadata(&self) -> Result<Metadata> {
-        Ok(self
+    pub fn compiling_metadata(&self) -> Result<&Metadata> {
+        Ok(&self
             .compiling
             .as_ref()
             .ok_or(anyhow!("Not compiling on {}", here!()))?
-            .metadata
-            .clone())
+            .metadata)
     }
     /// Insert global metadata
     pub async fn insert_global_metadata(
@@ -112,7 +93,7 @@ impl Context {
         Ok(())
     }
     /// Insert compiling metadata
-    pub async fn insert_compiling_metadata(
+    pub fn insert_compiling_metadata(
         &mut self,
         name: impl ToString,
         value: impl Serialize,
@@ -120,7 +101,7 @@ impl Context {
         let metadata = to_metadata(value)?;
         self.compiling
             .as_mut()
-            .ok_or(anyhow!("Not compiling on {}", here!()))?
+            .ok_or(anyhow!("Not compiling"))?
             .metadata
             .as_object_mut()
             .unwrap()
@@ -130,12 +111,13 @@ impl Context {
 
     /// Get compiling version
     pub fn version(&self) -> Result<Version> {
-        Ok(self
-            .compiling
-            .as_ref()
-            .ok_or(anyhow!("Not compiling on {}", here!()))?
-            .version
-            .clone())
+        let compiling = self.compiling_metadata()?;
+        let version = compiling
+            .get(VERSION_META)
+            .ok_or(anyhow!("Rule metadata not set!"))?
+            .as_str()
+            .ok_or(anyhow!("Invalid value"))?;
+        Ok(Version::new(Some(version.to_string())))
     }
     /// Get version
     pub async fn get_version(&self, version: &Version, path: &PathBuf) -> Option<Metadata> {
@@ -188,7 +170,7 @@ impl Context {
     /// Save current compiling metadata as snapshot
     pub async fn save_snapshot(&self) -> Result<()> {
         let rule = self.rule()?;
-        let compiling_metadata = self.compiling_metadata()?;
+        let compiling_metadata = self.compiling_metadata()?.clone();
         let mut locked = self.metadata.lock().await;
         let obj = locked.as_object_mut().unwrap();
         if let Some(Metadata::Array(a)) = obj.get_mut(&rule) {
@@ -207,31 +189,44 @@ impl Context {
 
     /// Get compiling rule name
     pub fn rule(&self) -> Result<String> {
-        Ok(self
-            .compiling
-            .as_ref()
-            .ok_or(anyhow!("Not compiling on {}", here!()))?
-            .rule
-            .clone())
+        let compiling = self.compiling_metadata()?;
+        let rule = compiling
+            .get(RULE_META)
+            .ok_or(anyhow!("Rule metadata not set!"))?
+            .as_str()
+            .ok_or(anyhow!("Invalid value"))?;
+        Ok(rule.to_string())
     }
 
     /// Get compiling source file path
     pub fn source(&self) -> Result<PathBuf> {
-        Ok(self
-            .compiling
-            .as_ref()
-            .ok_or(anyhow!("Not compiling on {}", here!()))?
-            .source
-            .clone())
+        let compiling = self.compiling_metadata()?;
+        let source = compiling
+            .get(SOURCE_FILE_META)
+            .ok_or(anyhow!("Source file metadata not set!"))?
+            .as_str()
+            .ok_or(anyhow!("Invalid value"))?;
+        Ok(PathBuf::from(source))
     }
     /// Get compiling target file path
     pub fn target(&self) -> Result<PathBuf> {
-        Ok(self
-            .compiling
-            .as_ref()
-            .ok_or(anyhow!("Not compiling on {}", here!()))?
-            .target
-            .clone())
+        let compiling = self.compiling_metadata()?;
+        let target = compiling
+            .get(TARGET_FILE_META)
+            .ok_or(anyhow!("Target file metadata not set!"))?
+            .as_str()
+            .ok_or(anyhow!("Invalid value"))?;
+        Ok(PathBuf::from(target))
+    }
+    /// Get compiling body
+    pub fn body(&self) -> Result<String> {
+        let compiling = self.compiling_metadata()?;
+        let body = compiling
+            .get(BODY_META)
+            .ok_or(anyhow!("Target file metadata not set!"))?
+            .as_str()
+            .ok_or(anyhow!("Invalid value"))?;
+        Ok(body.to_string())
     }
     /// Get config
     pub fn config(&self) -> Config {

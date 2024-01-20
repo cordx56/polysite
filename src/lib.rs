@@ -2,12 +2,10 @@ pub mod builder;
 pub mod compiler;
 pub mod config;
 pub mod error;
-pub mod router;
 
 pub use builder::*;
-pub use compiler::*;
+pub use compiler::{CompileFunction, CompileResult, Compiler, CompilerReturn};
 pub use config::Config;
-pub use router::*;
 
 #[cfg(test)]
 mod tests {
@@ -43,30 +41,25 @@ mod tests {
             // Rules in same step will build concurrently, but
             // the file matching is evaluated in order
             .add_step([
-                Rule::new("compile")
-                    .set_globs(["compiler/*"])
-                    .set_router(SetExtRouter::new("txt").get())
-                    .set_compiler(
-                        GenericCompiler::from(|ctx| {
+                Rule::new("compile").set_globs(["compiler/*"]).set_compiler(
+                    pipe!(
+                        compiler::path::SetExtension::new("txt"),
+                        PrintCompiler::new()
+                    )
+                    .get(),
+                ),
+                Rule::new("compile").set_globs(["**/*"]).set_compiler(
+                    pipe!(
+                        compiler::path::SetExtension::new("txt"),
+                        compiler::utils::GenericCompiler::from(|ctx| {
                             compiler!({
                                 println!("{}", ctx.source()?.display());
                                 Ok(ctx)
                             })
                         })
-                        .get(),
-                    ),
-                Rule::new("compile")
-                    .set_globs(["**/*"])
-                    .set_router(SetExtRouter::new("txt").get())
-                    .set_compiler(
-                        GenericCompiler::from(|ctx| {
-                            compiler!({
-                                println!("{}", ctx.source()?.display());
-                                Ok(ctx)
-                            })
-                        })
-                        .get(),
-                    ),
+                    )
+                    .get(),
+                ),
             ])
             .build()
             .await;

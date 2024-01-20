@@ -17,7 +17,6 @@ pub struct Rule {
     name: String,
     conditions: Option<Conditions>,
     matched: Option<Vec<PathBuf>>,
-    router: Option<Arc<dyn Router>>,
     compiler: Option<Arc<dyn Compiler>>,
     version: Version,
 }
@@ -30,7 +29,6 @@ impl Rule {
             name,
             conditions: None,
             matched: None,
-            router: None,
             compiler: None,
             version: Version::new(None),
         }
@@ -51,15 +49,6 @@ impl Rule {
     pub fn set_create(mut self, create: impl IntoIterator<Item = impl ToString>) -> Self {
         let create = create.into_iter().map(|s| s.to_string()).collect();
         self.conditions = Some(Conditions::Create(create));
-        self
-    }
-
-    /// Set router
-    ///
-    /// The router passed to this method will be used to transform source file path to
-    /// target file path.
-    pub fn set_router(mut self, router: Arc<dyn Router>) -> Self {
-        self.router = Some(router);
         self
     }
 
@@ -135,7 +124,6 @@ impl Rule {
             .compiler
             .clone()
             .ok_or(anyhow!("No compiler is registered"))?;
-        let router = self.router.clone();
         let snapshot_manager = SnapshotManager::new();
         let mut tasks = Vec::new();
         for path in matched {
@@ -144,24 +132,21 @@ impl Rule {
                 .config()
                 .target_dir()
                 .join(path.strip_prefix(&src_dir).unwrap_or(&path));
-            // Apply router
-            let target = match &router {
-                Some(r) => r.route(target),
-                None => target,
-            };
             // Make Snapshot stage
             let snapshot_stage = SnapshotStage::new();
             snapshot_manager.push(snapshot_stage.clone()).await;
             // Make compiling data
-            let compiling = Compiling::new(
-                self.get_name(),
-                path,
-                target,
-                self.version.clone(),
-                snapshot_stage,
-            );
+            let compiling = Compiling::new(snapshot_stage);
             let mut new_ctx = ctx.clone();
             new_ctx.set_compiling(Some(compiling));
+            new_ctx.insert_compiling_metadata(RULE_META, self.get_name())?;
+            new_ctx
+                .insert_compiling_metadata(SOURCE_FILE_META, path.to_string_lossy().to_string())?;
+            new_ctx.insert_compiling_metadata(
+                TARGET_FILE_META,
+                target.to_string_lossy().to_string(),
+            )?;
+            new_ctx.insert_compiling_metadata(VERSION_META, self.version.get())?;
             tasks.push(compiler.compile(new_ctx));
         }
         ctx.register_snapshot_manager(self.get_name(), snapshot_manager)
@@ -175,10 +160,11 @@ impl Rule {
         while let Some(res) = set.join_next().await {
             let res = res.map_err(|e| anyhow!("Join error: {:?}", e))?;
             let res = res.map_err(|e| anyhow!("Compile error: {}", e))?;
+            let compiling_metadata = res.compiling_metadata()?.clone();
             ctx.insert_version(
                 self.version.clone(),
                 res.source()?,
-                res.compiling_metadata()?,
+                compiling_metadata.clone(),
             )
             .await?;
             info!(
@@ -186,7 +172,7 @@ impl Rule {
                 res.source()?.display(),
                 res.target()?.display()
             );
-            results.push(res.compiling_metadata()?);
+            results.push(compiling_metadata);
         }
         let metadata = Metadata::Array(results);
         ctx.insert_global_metadata(self.get_name(), metadata)

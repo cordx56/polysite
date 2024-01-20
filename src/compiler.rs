@@ -1,7 +1,9 @@
 pub mod file;
 pub mod markdown;
+pub mod path;
 pub mod snapshot;
 pub mod template;
+pub mod utils;
 
 use crate::*;
 use anyhow::Error;
@@ -37,57 +39,16 @@ macro_rules! compiler {
     };
 }
 
-pub struct GenericCompiler {
-    compile_method: Box<dyn CompileFunction>,
-}
-impl GenericCompiler {
-    pub fn empty() -> Self {
-        Self::from(|ctx| compiler!(Ok(ctx)))
-    }
-    pub fn from<F: CompileFunction + 'static>(f: F) -> Self {
-        Self {
-            compile_method: Box::new(f),
-        }
-    }
-}
-impl Compiler for GenericCompiler {
-    fn compile(&self, ctx: Context) -> CompilerReturn {
-        (self.compile_method)(ctx)
-    }
-}
-
 /// pipe! macro may used to make large compiler from
 /// piping multiple compilers
 #[macro_export]
 macro_rules! pipe {
     ($f:expr, $($n:expr),+ $(,)?) => {{
-        $crate::PipeCompiler::new(vec![
+        $crate::compiler::utils::PipeCompiler::new(vec![
             $f.get(),
             $(
                 $n.get(),
             )+
         ])
     }}
-}
-
-/// Piped compiler
-pub struct PipeCompiler {
-    compilers: Vec<Arc<dyn Compiler>>,
-}
-impl PipeCompiler {
-    pub fn new(compilers: Vec<Arc<dyn Compiler>>) -> Self {
-        Self { compilers }
-    }
-}
-impl Compiler for PipeCompiler {
-    fn compile(&self, ctx: Context) -> CompilerReturn {
-        let compilers = self.compilers.clone();
-        compiler!({
-            let mut ctx = ctx;
-            for c in compilers {
-                ctx = c.compile(ctx).await?;
-            }
-            Ok(ctx)
-        })
-    }
 }

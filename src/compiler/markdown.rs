@@ -1,10 +1,16 @@
-use crate::{error::here, *};
+use crate::{
+    compiler::{
+        file::{FileReader, FileWriter},
+        path::SetExtension,
+        snapshot::{SaveSnapshot, WaitSnapshot},
+        template::{TemplateEngine, TemplateRenderer},
+    },
+    error::here,
+    *,
+};
 use anyhow::anyhow;
-use file::{FileReader, FileWriter};
 use pulldown_cmark::{html::push_html, Options, Parser};
-use snapshot::{SaveSnapshot, WaitSnapshot};
 use std::sync::Arc;
-use template::{TemplateEngine, TemplateRenderer};
 
 /// Markdown renderer
 pub struct MarkdownRenderer {
@@ -25,20 +31,17 @@ impl Compiler for MarkdownRenderer {
         let options = self.options.clone();
         Box::new(compiler!({
             let mut ctx = ctx;
-            let body = ctx.get_source_string()?;
+            let body = ctx.body()?;
             let fm = fronma::parser::parse::<Metadata>(&body)
                 .map_err(|e| anyhow!("Front matter parse error on {}: {:?}", here!(), e))?;
-            let mut file_metadata = fm.headers;
+            let file_metadata = fm.headers;
             let parser = Parser::new_ext(fm.body, options);
             let mut html = String::new();
             push_html(&mut html, parser);
-            file_metadata
-                .as_object_mut()
-                .unwrap()
-                .insert("body".to_string(), Metadata::String(html));
             for (k, v) in file_metadata.as_object().unwrap().clone().into_iter() {
-                ctx.insert_compiling_metadata(k, v).await?;
+                ctx.insert_compiling_metadata(k, v)?;
             }
+            ctx.insert_compiling_metadata(BODY_META, html)?;
             Ok(ctx)
         }))
     }
@@ -80,6 +83,7 @@ impl Compiler for MarkdownCompiler {
         let options = self.options.clone();
         let wait_snapshots = self.wait_snapshots.clone();
         let compiler = pipe!(
+            SetExtension::new("html"),
             FileReader::new(),
             MarkdownRenderer::new(options),
             SaveSnapshot::new(),

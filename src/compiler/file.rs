@@ -14,8 +14,7 @@ impl Compiler for FileReader {
         compiler!({
             let mut ctx = ctx;
             let src = ctx.get_source_string()?;
-            ctx.insert_compiling_metadata("body".to_string(), src)
-                .await?;
+            ctx.insert_compiling_metadata(BODY_META, src)?;
             Ok(ctx)
         })
     }
@@ -37,17 +36,9 @@ impl Compiler for FileWriter {
                     e
                 )
             })?;
-            let metadata = ctx.metadata().await;
-            let body = metadata
-                .as_object()
-                .unwrap()
-                .get("body")
-                .ok_or(anyhow!("body field not found in metadata"))?;
-            let s = body
-                .as_str()
-                .ok_or(anyhow!("body field in metadata is not string"))?;
+            let body = ctx.body()?;
             target
-                .write(s.as_bytes())
+                .write(body.as_bytes())
                 .map_err(|e| anyhow!("Failed to write file: {:?}", e))?;
             Ok(ctx)
         })
