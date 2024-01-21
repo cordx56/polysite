@@ -1,5 +1,6 @@
 use crate::*;
 
+/// Save current compiling metadata as snapshot.
 pub struct SaveSnapshot;
 impl SaveSnapshot {
     /// Save snapshot
@@ -16,6 +17,7 @@ impl Compiler for SaveSnapshot {
     }
 }
 
+/// Wait specified snapshots' stages.
 #[derive(Clone)]
 pub struct WaitSnapshot {
     rule_stage_set: Vec<(String, usize)>,

@@ -1,6 +1,8 @@
 use crate::*;
 use std::sync::Arc;
 
+/// Generic compiler
+/// You can create new compiler using this.
 pub struct GenericCompiler {
     compile_method: Box<dyn CompileFunction>,
 }
@@ -8,6 +10,7 @@ impl GenericCompiler {
     pub fn empty() -> Self {
         Self::from(|ctx| compile!(Ok(ctx)))
     }
+    /// Create compiler from closure
     pub fn from<F: CompileFunction + 'static>(f: F) -> Self {
         Self {
             compile_method: Box::new(f),

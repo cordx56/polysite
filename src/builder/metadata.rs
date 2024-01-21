@@ -2,8 +2,10 @@ use anyhow::{Context as _, Result};
 use serde::Serialize;
 use serde_json::{from_str, json, to_string, Value};
 
-/// Use serde_json::Value as metadata
-/// because the serde::Serialize trait is not object safe
+/// Use [`serde_json::Value`](https://docs.rs/serde_json/1/serde_json/enum.Value.html)
+/// as metadata because the
+/// [`serde::Serialize`](https://docs.rs/serde/1/serde/trait.Serialize.html) trait
+/// is not object safe
 pub type Metadata = Value;
 
 pub fn to_metadata(data: impl Serialize) -> Result<Metadata> {

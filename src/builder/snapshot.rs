@@ -50,7 +50,7 @@ impl SnapshotManager {
             notify: Arc::new(Notify::new()),
         }
     }
-    /// Register new SnapshotStage
+    /// Register new `SnapshotStage`
     pub async fn push(&self, stage: SnapshotStage) {
         let current_stage = stage.current_stage().await;
         let current_stages = self.current_stages.clone();

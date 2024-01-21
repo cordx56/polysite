@@ -1,5 +1,7 @@
 use crate::*;
 
+/// `SetExtension` will change target file's extension to
+/// specified one.
 pub struct SetExtension(String);
 impl SetExtension {
     pub fn new(ext: impl ToString) -> Self {

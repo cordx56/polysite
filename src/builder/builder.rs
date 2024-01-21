@@ -22,7 +22,7 @@ impl Builder {
     /// Insert global metadata
     ///
     /// You can pass anything which can be serialized and deserialized to
-    /// serde_json::Value
+    /// [`serde_json::Value`](https://docs.rs/serde_json/1/serde_json/enum.Value.html).
     pub async fn insert_metadata(
         &mut self,
         name: impl ToString,

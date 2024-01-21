@@ -15,7 +15,7 @@ impl TemplateEngine {
         Ok(Self { tera })
     }
 
-    /// Get Arc<TemplateEngine> for sharing template engine for multiple tasks
+    /// Get `Arc<TemplateEngine>` for sharing template engine for multiple tasks
     pub fn get(self) -> Arc<Self> {
         Arc::new(self)
     }
@@ -32,7 +32,8 @@ impl TemplateEngine {
     }
 }
 
-/// Template renderer
+/// Template renderer renders HTML using specified template and
+/// compiling metadata.
 pub struct TemplateRenderer {
     engine: Arc<TemplateEngine>,
     template: String,

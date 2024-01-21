@@ -11,14 +11,15 @@ use anyhow::anyhow;
 use pulldown_cmark::{html::push_html, Options, Parser};
 use std::sync::Arc;
 
-/// Markdown renderer
+/// Markdown renderer will read `_body` metadata as markdown,
+/// render HTML, and store HTML as `_body` metadata.
 pub struct MarkdownRenderer {
     options: Options,
 }
 impl MarkdownRenderer {
     /// Create markdown renderer
     ///
-    /// Pass pulldown_cmark::Options to render markdown to HTML
+    /// Pass `pulldown_cmark::Options` to render markdown to HTML
     pub fn new(options: Option<Options>) -> Self {
         let options = options.unwrap_or(Options::all());
         Self { options }

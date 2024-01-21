@@ -3,6 +3,8 @@ use anyhow::Context as _;
 use std::fs::copy;
 use std::io::Write;
 
+/// `FileReader` compiler will read source file as String and
+/// store data as `_body` metadata.
 pub struct FileReader;
 impl FileReader {
     pub fn new() -> Self {
@@ -20,6 +22,8 @@ impl Compiler for FileReader {
     }
 }
 
+/// `FileWriter` compiler will write String stored
+/// in `_body` metadata to target file.
 pub struct FileWriter;
 impl FileWriter {
     pub fn new() -> Self {
@@ -43,6 +47,7 @@ impl Compiler for FileWriter {
     }
 }
 
+/// `CopyCompiler` will simply copies source file to target file
 pub struct CopyCompiler;
 impl CopyCompiler {
     pub fn new() -> Self {

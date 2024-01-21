@@ -42,6 +42,10 @@ impl Compiling {
 }
 
 #[derive(Clone)]
+/// Compile context
+///
+/// Holds global, compiling (local) and versions `Metadata`,
+/// snapshot manager, provides some helper methods.
 pub struct Context {
     metadata: Arc<Mutex<Metadata>>,
     versions: Arc<Mutex<HashMap<Version, HashMap<PathBuf, Metadata>>>>,
@@ -80,7 +84,7 @@ impl Context {
     /// Insert global metadata
     ///
     /// You can pass anything which can be serialized and deserialized to
-    /// serde_json::Value
+    /// [`serde_json::Value`](https://docs.rs/serde_json/1/serde_json/enum.Value.html).
     pub async fn insert_global_metadata(
         &self,
         name: impl ToString,
@@ -98,7 +102,7 @@ impl Context {
     /// Insert compiling metadata
     ///
     /// You can pass anything which can be serialized and deserialized to
-    /// serde_json::Value
+    /// [`serde_json::Value`](https://docs.rs/serde_json/1/serde_json/enum.Value.html).
     pub fn insert_compiling_metadata(
         &mut self,
         name: impl ToString,
