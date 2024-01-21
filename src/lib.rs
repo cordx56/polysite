@@ -18,7 +18,7 @@ mod tests {
     }
     impl Compiler for PrintCompiler {
         fn compile(&self, ctx: Context) -> CompilerReturn {
-            Box::new(compiler!({
+            Box::new(compile!({
                 let src = ctx.source()?;
                 let tgt = ctx.target()?;
                 println!("{} -> {}", src.display(), tgt.display());
@@ -50,7 +50,7 @@ mod tests {
                     pipe!(
                         compiler::path::SetExtension::new("txt"),
                         compiler::utils::GenericCompiler::from(|ctx| {
-                            compiler!({
+                            compile!({
                                 println!("{}", ctx.source()?.display());
                                 Ok(ctx)
                             })

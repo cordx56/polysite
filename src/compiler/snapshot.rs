@@ -9,7 +9,7 @@ impl SaveSnapshot {
 }
 impl Compiler for SaveSnapshot {
     fn compile(&self, ctx: Context) -> CompilerReturn {
-        compiler!({
+        compile!({
             ctx.save_snapshot().await?;
             Ok(ctx)
         })
@@ -37,7 +37,7 @@ impl WaitSnapshot {
 impl Compiler for WaitSnapshot {
     fn compile(&self, ctx: Context) -> CompilerReturn {
         let set = self.rule_stage_set.clone();
-        compiler!({
+        compile!({
             for (rule, until) in set {
                 ctx.wait_snapshot_until(rule, until).await?
             }

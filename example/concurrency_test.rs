@@ -9,7 +9,7 @@ async fn main() {
         .add_step([
             Rule::new("medium1").set_create(["medium1"]).set_compiler(
                 GenericCompiler::from(|ctx| {
-                    compiler!({
+                    compile!({
                         thread::sleep(time::Duration::from_secs(2));
                         Ok(ctx)
                     })
@@ -18,7 +18,7 @@ async fn main() {
             ),
             Rule::new("long1").set_create(["long1"]).set_compiler(
                 GenericCompiler::from(|ctx| {
-                    compiler!({
+                    compile!({
                         thread::sleep(time::Duration::from_secs(3));
                         Ok(ctx)
                     })
@@ -27,7 +27,7 @@ async fn main() {
             ),
             Rule::new("short1").set_create(["short1"]).set_compiler(
                 GenericCompiler::from(|ctx| {
-                    compiler!({
+                    compile!({
                         thread::sleep(time::Duration::from_secs(1));
                         Ok(ctx)
                     })
@@ -38,7 +38,7 @@ async fn main() {
         .add_step([
             Rule::new("medium2").set_create(["medium2"]).set_compiler(
                 GenericCompiler::from(|ctx| {
-                    compiler!({
+                    compile!({
                         thread::sleep(time::Duration::from_secs(2));
                         Ok(ctx)
                     })
@@ -47,7 +47,7 @@ async fn main() {
             ),
             Rule::new("long2").set_create(["long2"]).set_compiler(
                 GenericCompiler::from(|ctx| {
-                    compiler!({
+                    compile!({
                         thread::sleep(time::Duration::from_secs(3));
                         Ok(ctx)
                     })
@@ -56,7 +56,7 @@ async fn main() {
             ),
             Rule::new("short2").set_create(["short2"]).set_compiler(
                 GenericCompiler::from(|ctx| {
-                    compiler!({
+                    compile!({
                         thread::sleep(time::Duration::from_secs(1));
                         Ok(ctx)
                     })

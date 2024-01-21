@@ -11,7 +11,7 @@ impl FileReader {
 }
 impl Compiler for FileReader {
     fn compile(&self, ctx: Context) -> CompilerReturn {
-        compiler!({
+        compile!({
             let mut ctx = ctx;
             let src = ctx.get_source_string()?;
             ctx.insert_compiling_metadata(BODY_META, src)?;
@@ -28,7 +28,7 @@ impl FileWriter {
 }
 impl Compiler for FileWriter {
     fn compile(&self, ctx: Context) -> CompilerReturn {
-        compiler!({
+        compile!({
             let target_display = ctx.target()?;
             let target_display = target_display.display();
             let mut target = ctx
@@ -51,7 +51,7 @@ impl CopyCompiler {
 }
 impl Compiler for CopyCompiler {
     fn compile(&self, ctx: Context) -> CompilerReturn {
-        compiler!({
+        compile!({
             ctx.create_target_dir()?;
             let src = ctx.source()?;
             let tgt = ctx.target()?;

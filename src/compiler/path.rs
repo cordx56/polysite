@@ -9,7 +9,7 @@ impl SetExtension {
 impl Compiler for SetExtension {
     fn compile(&self, mut ctx: Context) -> CompilerReturn {
         let ext = self.0.clone();
-        compiler!({
+        compile!({
             let mut target = ctx.target()?;
             target.set_extension(ext);
             ctx.insert_compiling_metadata(TARGET_FILE_META, target)?;

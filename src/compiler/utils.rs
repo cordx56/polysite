@@ -6,7 +6,7 @@ pub struct GenericCompiler {
 }
 impl GenericCompiler {
     pub fn empty() -> Self {
-        Self::from(|ctx| compiler!(Ok(ctx)))
+        Self::from(|ctx| compile!(Ok(ctx)))
     }
     pub fn from<F: CompileFunction + 'static>(f: F) -> Self {
         Self {
@@ -33,7 +33,7 @@ impl PipeCompiler {
 impl Compiler for PipeCompiler {
     fn compile(&self, ctx: Context) -> CompilerReturn {
         let compilers = self.compilers.clone();
-        compiler!({
+        compile!({
             let mut ctx = ctx;
             for c in compilers {
                 ctx = c.compile(ctx).await?;

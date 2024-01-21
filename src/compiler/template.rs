@@ -47,7 +47,7 @@ impl Compiler for TemplateRenderer {
     fn compile(&self, ctx: Context) -> CompilerReturn {
         let engine = self.engine.clone();
         let template = self.template.clone();
-        Box::new(compiler!({
+        Box::new(compile!({
             let mut ctx = ctx;
             let metadata = ctx.metadata().await;
             let body = engine.render(&template, &metadata)?;

@@ -27,7 +27,7 @@ impl MarkdownRenderer {
 impl Compiler for MarkdownRenderer {
     fn compile(&self, ctx: Context) -> CompilerReturn {
         let options = self.options.clone();
-        Box::new(compiler!({
+        Box::new(compile!({
             let mut ctx = ctx;
             let body = ctx.body()?;
             let fm = fronma::parser::parse::<Metadata>(&body)

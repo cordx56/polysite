@@ -18,12 +18,11 @@ pub type CompilerReturn = Box<dyn Future<Output = CompileResult> + Unpin + Send>
 /// Compiler trait
 ///
 /// All compiler must implement this trait.
-/// `compile` method, which takes `Context` as parameter
-/// and return `CompilerReturn`, is required to implement.
-///
-/// `get` method is provided to get Arc pointer.
 pub trait Compiler: Send + Sync {
+    /// `compile` method, which takes `Context` as parameter
+    /// and return `CompilerReturn`, is required to implement.
     fn compile(&self, ctx: Context) -> CompilerReturn;
+    /// `get` method is provided to get Arc pointer.
     fn get(self) -> Arc<Self>
     where
         Self: Sized,
@@ -42,7 +41,7 @@ impl<F> CompileFunction for F where F: Fn(Context) -> CompilerReturn + Send + Sy
 /// compiler! macro may used to make compile function
 /// which returns boxed Future
 #[macro_export]
-macro_rules! compiler {
+macro_rules! compile {
     ($b:expr) => {
         Box::new(Box::pin(async move { $b }))
     };
