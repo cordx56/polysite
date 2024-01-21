@@ -1,5 +1,5 @@
 use crate::*;
-use anyhow::{anyhow, Ok};
+use anyhow::Context as _;
 use std::fs::copy;
 use std::io::Write;
 
@@ -29,17 +29,15 @@ impl FileWriter {
 impl Compiler for FileWriter {
     fn compile(&self, ctx: Context) -> CompilerReturn {
         compiler!({
-            let mut target = ctx.open_target().map_err(|e| {
-                anyhow!(
-                    "Failed to open file {}: {:?}",
-                    ctx.target().unwrap().display(),
-                    e
-                )
-            })?;
+            let target_display = ctx.target()?;
+            let target_display = target_display.display();
+            let mut target = ctx
+                .open_target()
+                .with_context(|| format!("Failed to open file {}", target_display))?;
             let body = ctx.body()?;
             target
                 .write(body.as_bytes())
-                .map_err(|e| anyhow!("Failed to write file: {:?}", e))?;
+                .with_context(|| format!("Failed to write file {}", target_display))?;
             Ok(ctx)
         })
     }
@@ -57,7 +55,7 @@ impl Compiler for CopyCompiler {
             ctx.create_target_dir()?;
             let src = ctx.source()?;
             let tgt = ctx.target()?;
-            copy(src, tgt).map_err(|e| anyhow!("Copy error: {:?}", e))?;
+            copy(src, tgt).context("Copy error")?;
             Ok(ctx)
         })
     }

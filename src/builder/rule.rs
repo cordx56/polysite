@@ -1,6 +1,6 @@
 use super::snapshot::*;
 use crate::*;
-use anyhow::{anyhow, Error};
+use anyhow::{anyhow, Context as _, Error};
 use glob::glob;
 use log::info;
 use std::path::PathBuf;
@@ -81,11 +81,11 @@ impl Rule {
                 let paths = globs
                     .map(|g| glob(&g))
                     .collect::<Result<Vec<_>, _>>()
-                    .map_err(|e| anyhow!("Glob pattern error: {:?}", e))?
+                    .context("Glob pattern error")?
                     .into_iter()
                     .map(|p| p.collect::<Result<Vec<_>, _>>())
                     .collect::<Result<Vec<_>, _>>()
-                    .map_err(|e| anyhow!("Glob error: {:?}", e))?
+                    .context("Glob error")?
                     .into_iter()
                     .flatten()
                     .filter(|p| p.is_file())
@@ -113,13 +113,16 @@ impl Rule {
     }
 
     /// Do compilation task
-    ///
-    /// Send notifications to all waiters when tasks are completed.
     pub(crate) async fn compile(&mut self, ctx: Context) -> CompileResult {
-        let matched = self
-            .matched
-            .clone()
-            .ok_or(anyhow!("Condition is not evaluated"))?;
+        let matched = match self.matched.clone() {
+            Some(m) => m,
+            None => {
+                self.eval_conditions(&ctx).await?;
+                self.matched
+                    .clone()
+                    .ok_or(anyhow!("Condition evaluation error"))?
+            }
+        };
         let compiler = self
             .compiler
             .clone()
@@ -158,8 +161,8 @@ impl Rule {
         }
         let mut results = Vec::new();
         while let Some(res) = set.join_next().await {
-            let res = res.map_err(|e| anyhow!("Join error: {:?}", e))?;
-            let res = res.map_err(|e| anyhow!("Compile error: {}", e))?;
+            let res = res.context("Join error")?;
+            let res = res.context("Compile error")?;
             let compiling_metadata = res.compiling_metadata()?.clone();
             ctx.insert_version(
                 self.version.clone(),

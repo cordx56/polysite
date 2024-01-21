@@ -67,6 +67,7 @@ impl SnapshotManager {
         });
     }
     /// Wait until all snapshots' stages became specified stage
+    /// stage number is minimum required stage number
     pub async fn wait_until(&self, stage: usize) {
         loop {
             if self

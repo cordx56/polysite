@@ -1,6 +1,6 @@
 use super::snapshot::*;
-use crate::{error::here, *};
-use anyhow::{anyhow, Result};
+use crate::*;
+use anyhow::{anyhow, Context as _, Result};
 use serde::Serialize;
 use serde_json::json;
 use std::collections::HashMap;
@@ -74,10 +74,13 @@ impl Context {
         Ok(&self
             .compiling
             .as_ref()
-            .ok_or(anyhow!("Not compiling on {}", here!()))?
+            .ok_or(anyhow!("Not compiling"))?
             .metadata)
     }
     /// Insert global metadata
+    ///
+    /// You can pass anything which can be serialized and deserialized to
+    /// serde_json::Value
     pub async fn insert_global_metadata(
         &self,
         name: impl ToString,
@@ -93,6 +96,9 @@ impl Context {
         Ok(())
     }
     /// Insert compiling metadata
+    ///
+    /// You can pass anything which can be serialized and deserialized to
+    /// serde_json::Value
     pub fn insert_compiling_metadata(
         &mut self,
         name: impl ToString,
@@ -155,7 +161,7 @@ impl Context {
     pub(crate) async fn register_snapshot_manager(&self, s: impl ToString, m: SnapshotManager) {
         self.snapshot_managers.lock().await.insert(s.to_string(), m);
     }
-    /// Wait snapshot
+    /// Wait snapshot until specified stage
     pub async fn wait_snapshot_until(&self, name: impl ToString, stage: usize) -> Result<()> {
         let name = name.to_string();
         self.snapshot_managers
@@ -236,24 +242,22 @@ impl Context {
     /// Get source file body
     pub fn get_source_body(&self) -> Result<Vec<u8>> {
         let file = self.source()?;
-        fs::read(&file).map_err(|e| anyhow!("File read error: {:?}", e))
+        fs::read(&file).context("File read error")
     }
     /// Get source file string
     pub fn get_source_string(&self) -> Result<String> {
-        String::from_utf8(self.get_source_body()?)
-            .map_err(|e| anyhow!("String encode error: {:?}", e))
+        String::from_utf8(self.get_source_body()?).context("String encode error")
     }
     pub fn create_target_dir(&self) -> Result<()> {
         let target = self.target()?;
         let dir = target.parent().unwrap();
-        fs::create_dir_all(&dir).map_err(|e| anyhow!("Directory creation error: {:?}", e))
+        fs::create_dir_all(&dir).context("Directory creation error")
     }
     /// Open target file to write
     pub fn open_target(&self) -> Result<fs::File> {
         self.create_target_dir()?;
         let target = self.target()?;
-        let file =
-            fs::File::create(&target).map_err(|e| anyhow!("Target file open error: {:?}", e))?;
+        let file = fs::File::create(&target).context("Target file open error")?;
         Ok(file)
     }
 }

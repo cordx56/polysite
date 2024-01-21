@@ -1,5 +1,5 @@
 use crate::*;
-use anyhow::{anyhow, Result};
+use anyhow::{Context as _, Result};
 use log::info;
 use serde::Serialize;
 use std::fs::remove_dir_all;
@@ -47,8 +47,7 @@ impl Builder {
         let conf = self.ctx.config();
         let target_dir = conf.target_dir();
         if conf.target_clean() && target_dir.is_dir() {
-            remove_dir_all(&target_dir)
-                .map_err(|e| anyhow!("Target directory cleaning error: {:?}", e))?;
+            remove_dir_all(&target_dir).context("Target directory compiling error")?;
             info!("Target directory ({}) cleaned", target_dir.display());
         }
         for step in self.steps.into_iter() {
@@ -59,8 +58,8 @@ impl Builder {
                 set.spawn(async move { (rule.get_name(), rule.compile(ctx).await) });
             }
             while let Some(join_res) = set.join_next().await {
-                let (name, res) = join_res.map_err(|e| anyhow!("Join error: {:?}", e))?;
-                let _ctx = res.map_err(|e| anyhow!("Rule {}: compile error: {}", name, e))?;
+                let (name, res) = join_res.context("Join error")?;
+                let _ctx = res.with_context(|| format!("Rule {}: compile error", name))?;
             }
         }
         Ok(())

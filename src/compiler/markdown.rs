@@ -5,7 +5,6 @@ use crate::{
         snapshot::{SaveSnapshot, WaitSnapshot},
         template::{TemplateEngine, TemplateRenderer},
     },
-    error::here,
     *,
 };
 use anyhow::anyhow;
@@ -17,10 +16,9 @@ pub struct MarkdownRenderer {
     options: Options,
 }
 impl MarkdownRenderer {
-    /// Create markdown compiler
+    /// Create markdown renderer
     ///
-    /// Pass template engine ref, template name and
-    /// markdown rendering option
+    /// Pass pulldown_cmark::Options to render markdown to HTML
     pub fn new(options: Option<Options>) -> Self {
         let options = options.unwrap_or(Options::all());
         Self { options }
@@ -33,7 +31,7 @@ impl Compiler for MarkdownRenderer {
             let mut ctx = ctx;
             let body = ctx.body()?;
             let fm = fronma::parser::parse::<Metadata>(&body)
-                .map_err(|e| anyhow!("Front matter parse error on {}: {:?}", here!(), e))?;
+                .map_err(|e| anyhow!("Front matter parse error: {:?}", e))?;
             let file_metadata = fm.headers;
             let parser = Parser::new_ext(fm.body, options);
             let mut html = String::new();
@@ -47,6 +45,12 @@ impl Compiler for MarkdownRenderer {
     }
 }
 
+/// Markdown compiler
+///
+/// Set target file extension to .html, read file,
+/// render markdown, save snapshot, wait snapshot
+/// if you specified, and render HTML using specified
+/// template engine and output target file.
 pub struct MarkdownCompiler {
     template: String,
     template_engine: Arc<TemplateEngine>,

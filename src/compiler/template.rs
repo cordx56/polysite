@@ -1,5 +1,5 @@
 use crate::*;
-use anyhow::{anyhow, Result};
+use anyhow::{Context as _, Result};
 use std::sync::Arc;
 use tera::Tera;
 
@@ -11,8 +11,7 @@ impl TemplateEngine {
     /// Load templates and create
     /// template engine instance
     pub fn new(template_dir: impl AsRef<str>) -> Result<Self> {
-        let tera = tera::Tera::new(template_dir.as_ref())
-            .map_err(|e| anyhow!("Template error: {:?}", e))?;
+        let tera = tera::Tera::new(template_dir.as_ref()).context("Template error")?;
         Ok(Self { tera })
     }
 
@@ -23,12 +22,12 @@ impl TemplateEngine {
 
     /// Render HTML using specified template and metadata
     pub fn render(&self, template: impl AsRef<str>, metadata: &Metadata) -> Result<String> {
-        let tera_ctx = tera::Context::from_serialize(metadata)
-            .map_err(|e| anyhow!("Context serialization error: {:?}", e))?;
+        let tera_ctx =
+            tera::Context::from_serialize(metadata).context("Context serialization error")?;
         let out = self
             .tera
             .render(template.as_ref(), &tera_ctx)
-            .map_err(|e| anyhow!("Tera rendering error: {:?}", e))?;
+            .context("Tera rendering error")?;
         Ok(out)
     }
 }

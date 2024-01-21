@@ -10,9 +10,18 @@ use anyhow::Error;
 use std::future::Future;
 use std::sync::Arc;
 
+/// `CompileResult` is type that returned by compiler's compile method.
 pub type CompileResult = Result<Context, Error>;
+/// `CompilerReturn` is boxed `Future`, which executes compile.
 pub type CompilerReturn = Box<dyn Future<Output = CompileResult> + Unpin + Send>;
 
+/// Compiler trait
+///
+/// All compiler must implement this trait.
+/// `compile` method, which takes `Context` as parameter
+/// and return `CompilerReturn`, is required to implement.
+///
+/// `get` method is provided to get Arc pointer.
 pub trait Compiler: Send + Sync {
     fn compile(&self, ctx: Context) -> CompilerReturn;
     fn get(self) -> Arc<Self>
@@ -25,8 +34,8 @@ pub trait Compiler: Send + Sync {
 
 /// Compiler function
 ///
-/// compiler function takes context as parameter,
-/// and returns CompilerReturn which is boxed future.
+/// compiler function takes `Context` as parameter,
+/// and returns `CompilerReturn` which is boxed future.
 pub trait CompileFunction: Fn(Context) -> CompilerReturn + Send + Sync {}
 impl<F> CompileFunction for F where F: Fn(Context) -> CompilerReturn + Send + Sync {}
 

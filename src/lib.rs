@@ -1,7 +1,6 @@
 pub mod builder;
 pub mod compiler;
 pub mod config;
-pub mod error;
 
 pub use builder::*;
 pub use compiler::{CompileFunction, CompileResult, Compiler, CompilerReturn};
@@ -10,7 +9,6 @@ pub use config::Config;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::Ok;
 
     struct PrintCompiler;
     impl PrintCompiler {
