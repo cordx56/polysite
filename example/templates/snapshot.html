@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block body %}
+    {{ _body | safe }}
+    {% for post in posts %}
+        <a href="{{ post._path }}">{{ post.title }}</a>
+    {% endfor %}
+{% endblock body %}

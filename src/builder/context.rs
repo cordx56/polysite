@@ -9,12 +9,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-pub const RULE_META: &str = "_rule";
-pub const SOURCE_FILE_META: &str = "_source";
-pub const TARGET_FILE_META: &str = "_target";
-pub const VERSION_META: &str = "_version";
-pub const BODY_META: &str = "_body";
-
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Version(String);
 impl Version {
@@ -241,6 +235,16 @@ impl Context {
             .as_str()
             .ok_or(anyhow!("Invalid value"))?;
         Ok(PathBuf::from(target))
+    }
+    /// Get compiling URL path
+    pub fn path(&self) -> Result<PathBuf> {
+        let compiling = self.compiling_metadata()?;
+        let path = compiling
+            .get(PATH_META)
+            .ok_or(anyhow!("Path metadata not set!"))?
+            .as_str()
+            .ok_or(anyhow!("Invalid value"))?;
+        Ok(PathBuf::from(path))
     }
     /// Get compiling body
     pub fn body(&self) -> Result<Metadata> {

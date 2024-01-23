@@ -2,6 +2,13 @@ use anyhow::{anyhow, Context as _, Result};
 use serde::Serialize;
 use serde_json::{from_str, json, to_string, Number, Value};
 
+pub const RULE_META: &str = "_rule";
+pub const SOURCE_FILE_META: &str = "_source";
+pub const TARGET_FILE_META: &str = "_target";
+pub const PATH_META: &str = "_path";
+pub const VERSION_META: &str = "_version";
+pub const BODY_META: &str = "_body";
+
 /// Use [`serde_json::Value`](https://docs.rs/serde_json/1/serde_json/enum.Value.html)
 /// as metadata because the
 /// [`serde::Serialize`](https://docs.rs/serde/1/serde/trait.Serialize.html) trait

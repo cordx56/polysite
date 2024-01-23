@@ -129,12 +129,11 @@ impl Rule {
             .ok_or(anyhow!("No compiler is registered"))?;
         let snapshot_manager = SnapshotManager::new();
         let mut tasks = Vec::new();
-        for path in matched {
+        for source in matched {
             let src_dir = ctx.config().source_dir();
-            let target = ctx
-                .config()
-                .target_dir()
-                .join(path.strip_prefix(&src_dir).unwrap_or(&path));
+            let path = source.strip_prefix(&src_dir).unwrap_or(&source);
+            let target = ctx.config().target_dir().join(path);
+            let path = PathBuf::from("/").join(path);
             // Make Snapshot stage
             let snapshot_stage = SnapshotStage::new();
             snapshot_manager.push(snapshot_stage.clone()).await;
@@ -143,12 +142,15 @@ impl Rule {
             let mut new_ctx = ctx.clone();
             new_ctx.set_compiling(Some(compiling));
             new_ctx.insert_compiling_metadata(RULE_META, self.get_name())?;
-            new_ctx
-                .insert_compiling_metadata(SOURCE_FILE_META, path.to_string_lossy().to_string())?;
+            new_ctx.insert_compiling_metadata(
+                SOURCE_FILE_META,
+                source.to_string_lossy().to_string(),
+            )?;
             new_ctx.insert_compiling_metadata(
                 TARGET_FILE_META,
                 target.to_string_lossy().to_string(),
             )?;
+            new_ctx.insert_compiling_metadata(PATH_META, path.to_string_lossy().to_string())?;
             new_ctx.insert_compiling_metadata(VERSION_META, self.version.get())?;
             tasks.push(compiler.compile(new_ctx));
         }

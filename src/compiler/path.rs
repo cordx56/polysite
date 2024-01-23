@@ -13,8 +13,11 @@ impl Compiler for SetExtension {
         let ext = self.0.clone();
         compile!({
             let mut target = ctx.target()?;
-            target.set_extension(ext);
+            let mut path = ctx.path()?;
+            target.set_extension(ext.clone());
             ctx.insert_compiling_metadata(TARGET_FILE_META, target)?;
+            path.set_extension(ext);
+            ctx.insert_compiling_metadata(PATH_META, path)?;
             Ok(ctx)
         })
     }
