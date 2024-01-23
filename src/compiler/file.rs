@@ -1,5 +1,5 @@
 use crate::*;
-use anyhow::Context as _;
+use anyhow::{anyhow, Context as _};
 use std::fs::copy;
 use std::io::Write;
 
@@ -15,8 +15,8 @@ impl Compiler for FileReader {
     fn compile(&self, ctx: Context) -> CompilerReturn {
         compile!({
             let mut ctx = ctx;
-            let src = ctx.get_source_string()?;
-            ctx.insert_compiling_metadata(BODY_META, src)?;
+            let src = ctx.get_source_data()?;
+            ctx.insert_compiling_raw_metadata(BODY_META, src)?;
             Ok(ctx)
         })
     }
@@ -39,9 +39,18 @@ impl Compiler for FileWriter {
                 .open_target()
                 .with_context(|| format!("Failed to open file {}", target_display))?;
             let body = ctx.body()?;
-            target
-                .write(body.as_bytes())
-                .with_context(|| format!("Failed to write file {}", target_display))?;
+            if let Some(s) = body.as_str() {
+                target
+                    .write(s.as_bytes())
+                    .with_context(|| format!("Failed to write file {}", target_display))?;
+            } else if body.is_array() {
+                let bytes = body.as_bytes()?;
+                target
+                    .write(&bytes)
+                    .with_context(|| format!("Failed to write file {}", target_display))?;
+            } else {
+                return Err(anyhow!("Invalid body format"));
+            }
             Ok(ctx)
         })
     }

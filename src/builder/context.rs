@@ -118,6 +118,20 @@ impl Context {
             .insert(name.to_string(), metadata);
         Ok(())
     }
+    pub fn insert_compiling_raw_metadata(
+        &mut self,
+        name: impl ToString,
+        metadata: Metadata,
+    ) -> Result<()> {
+        self.compiling
+            .as_mut()
+            .ok_or(anyhow!("Not compiling"))?
+            .metadata
+            .as_object_mut()
+            .unwrap()
+            .insert(name.to_string(), metadata);
+        Ok(())
+    }
 
     /// Get compiling version
     pub fn version(&self) -> Result<Version> {
@@ -229,14 +243,13 @@ impl Context {
         Ok(PathBuf::from(target))
     }
     /// Get compiling body
-    pub fn body(&self) -> Result<String> {
+    pub fn body(&self) -> Result<Metadata> {
         let compiling = self.compiling_metadata()?;
         let body = compiling
             .get(BODY_META)
             .ok_or(anyhow!("Target file metadata not set!"))?
-            .as_str()
-            .ok_or(anyhow!("Invalid value"))?;
-        Ok(body.to_string())
+            .clone();
+        Ok(body)
     }
     /// Get config
     pub fn config(&self) -> Config {
@@ -251,6 +264,15 @@ impl Context {
     /// Get source file string
     pub fn get_source_string(&self) -> Result<String> {
         String::from_utf8(self.get_source_body()?).context("String encode error")
+    }
+    /// Get source file string
+    pub fn get_source_data(&self) -> Result<Metadata> {
+        let body = self.get_source_body()?;
+        if let Ok(s) = String::from_utf8(body.clone()) {
+            Ok(Metadata::String(s))
+        } else {
+            Ok(Metadata::from_bytes(body))
+        }
     }
     pub fn create_target_dir(&self) -> Result<()> {
         let target = self.target()?;

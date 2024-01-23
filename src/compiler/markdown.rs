@@ -31,6 +31,7 @@ impl Compiler for MarkdownRenderer {
         Box::new(compile!({
             let mut ctx = ctx;
             let body = ctx.body()?;
+            let body = body.as_str().ok_or(anyhow!("Body is not string"))?;
             let fm = fronma::parser::parse::<Metadata>(&body)
                 .map_err(|e| anyhow!("Front matter parse error: {:?}", e))?;
             let file_metadata = fm.headers;
