@@ -3,7 +3,7 @@ use anyhow::{Context as _, Result};
 use std::sync::Arc;
 use tera::Tera;
 
-/// Template engine (tera)
+/// Template engine (uses [`tera`])
 pub struct TemplateEngine {
     tera: Tera,
 }

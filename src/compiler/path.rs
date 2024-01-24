@@ -1,6 +1,6 @@
 use crate::*;
 
-/// `SetExtension` will change target file's extension and URL path extension to specified one.
+/// [`SetExtension`] will change target file's extension and URL path extension to specified one.
 pub struct SetExtension(String);
 impl SetExtension {
     pub fn new(ext: impl ToString) -> Self {

@@ -3,14 +3,12 @@
 //! This crate is inspired by [Hakyll][hakyll] written in Haskell.
 //!
 //! # Difference from other static site generator
-//! I know [Zola], static site generator
-//! written in Rust.
+//! I know [Zola][zola], static site generator written in Rust.
 //! But zola is not enough customizable for me.
 //! So I create this crate.
 //!
 //! # How to use
-//! If you would like to simply build site written in Markdown, use
-//! [`MarkdownCompiler`][markdowncompiler].
+//! If you would like to simply build site written in Markdown, use [`compiler::markdown::MarkdownCompiler`].
 //! The example is in [`examples/simple_markdown.rs`][simple_example].
 //!
 //! # How to create compiler
@@ -22,7 +20,7 @@
 //! If you would like to pipe some compilers, use [`pipe!`] macro.
 //!
 //! If you would like to create small compiler using closure, use
-//! [`GenericCompiler`][genericcompiler].
+//! [`compiler::utils::GenericCompiler`].
 //!
 //! # Metadata
 //! polysite uses metadata to save compile result and metadata can be used in other compilation.
@@ -81,9 +79,7 @@
 //!
 //! [hakyll]: https://jaspervdj.be/hakyll/
 //! [zola]: https://www.getzola.org/
-//! [markdowncompiler]: crate::compiler::markdown::MarkdownCompiler
 //! [simple_example]: https://github.com/cordx56/polysite/blob/main/examples/simple_markdown.rs
-//! [genericcompiler]: crate::compiler::utils::GenericCompiler
 //! [examples]: https://github.com/cordx56/polysite/blob/main/examples
 
 pub mod builder;

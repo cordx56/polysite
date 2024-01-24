@@ -9,10 +9,8 @@ pub const PATH_META: &str = "_path";
 pub const VERSION_META: &str = "_version";
 pub const BODY_META: &str = "_body";
 
-/// Use [`serde_json::Value`](https://docs.rs/serde_json/1/serde_json/enum.Value.html)
-/// as metadata because the
-/// [`serde::Serialize`](https://docs.rs/serde/1/serde/trait.Serialize.html) trait
-/// is not object safe
+/// Use [`serde_json::Value`] as metadata because the [`serde::Serialize`] trait is not object
+/// safe.
 pub type Metadata = Value;
 
 /// Trait to handle bytes data as metadata

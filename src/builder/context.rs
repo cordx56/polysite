@@ -77,8 +77,7 @@ impl Context {
     }
     /// Insert global metadata
     ///
-    /// You can pass anything which can be serialized and deserialized to
-    /// [`serde_json::Value`](https://docs.rs/serde_json/1/serde_json/enum.Value.html).
+    /// You can pass anything which can be serialized and deserialized to [`serde_json::Value`].
     pub async fn insert_global_metadata(
         &self,
         name: impl ToString,
@@ -95,8 +94,7 @@ impl Context {
     }
     /// Insert compiling metadata
     ///
-    /// You can pass anything which can be serialized and deserialized to
-    /// [`serde_json::Value`](https://docs.rs/serde_json/1/serde_json/enum.Value.html).
+    /// You can pass anything which can be serialized and deserialized to [`serde_json::Value`].
     pub fn insert_compiling_metadata(
         &mut self,
         name: impl ToString,

@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 /// Compiler function
 ///
-/// compiler function takes `Context` as parameter,
-/// and returns `CompilerReturn` which is boxed future.
+/// compiler function takes [`Context`] as parameter,
+/// and returns [`CompilerReturn`] which is boxed future.
 pub trait CompileFunction: Fn(Context) -> CompilerReturn + Send + Sync {}
 impl<F> CompileFunction for F where F: Fn(Context) -> CompilerReturn + Send + Sync {}
 

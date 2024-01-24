@@ -12,9 +12,9 @@ use anyhow::Error;
 use std::future::Future;
 use std::sync::Arc;
 
-/// `CompileResult` is type that returned by compiler's compile method.
+/// [`CompileResult`] is type that returned by compiler's compile method.
 pub type CompileResult = Result<Context, Error>;
-/// `CompilerReturn` is boxed `Future`, which executes compile.
+/// [`CompilerReturn`] is boxed `Future`, which executes compile.
 pub type CompilerReturn = Box<dyn Future<Output = CompileResult> + Unpin + Send>;
 
 /// Compiler trait

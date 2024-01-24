@@ -19,7 +19,7 @@ pub struct MarkdownRenderer {
 impl MarkdownRenderer {
     /// Create markdown renderer
     ///
-    /// Pass `pulldown_cmark::Options` to render markdown to HTML
+    /// Pass [`pulldown_cmark::Options`] to render markdown to HTML
     pub fn new(options: Option<Options>) -> Self {
         let options = options.unwrap_or(Options::all());
         Self { options }
