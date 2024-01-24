@@ -656,6 +656,7 @@ dependencies = [
  "pulldown-cmark",
  "serde",
  "serde_json",
+ "simple_logger",
  "tera",
  "tokio",
 ]

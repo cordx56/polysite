@@ -21,7 +21,8 @@ impl GenericCompiler {
     ///
     /// # Example
     /// ```
-    /// GenericCompiler::from(|ctx| compile!({ Ok(ctx) }))
+    /// use polysite::{compiler::utils::GenericCompiler, *};
+    /// GenericCompiler::from(|ctx| compile!({ Ok(ctx) }));
     /// ```
     pub fn from<F: CompileFunction + 'static>(f: F) -> Self {
         Self {
@@ -62,16 +63,15 @@ impl Compiler for PipeCompiler {
 /// piping multiple compilers
 ///
 /// # Example
-/// This example is similar to used in [`compiler::markdown::MarkdownCompiler`].
+/// This example will write source file as HTML file as-is.
 ///
 /// ```
+/// use polysite::{compiler::*, *};
 /// pipe!(
-///     SetExtension::new("html"),
-///     FileReader::new(),
-///     MarkdownRenderer::new(options),
-///     TemplateRenderer::new(template_engine, template),
-///     FileWriter::new(),
-/// )
+///     path::SetExtension::new("html"),
+///     file::FileReader::new(),
+///     file::FileWriter::new(),
+/// );
 /// ```
 #[macro_export]
 macro_rules! pipe {
@@ -84,3 +84,4 @@ macro_rules! pipe {
         ])
     }}
 }
+pub use pipe;

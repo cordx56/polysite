@@ -5,6 +5,8 @@ pub mod snapshot;
 pub mod template;
 pub mod utils;
 
+pub use utils::pipe;
+
 use crate::*;
 use anyhow::Error;
 use std::future::Future;
