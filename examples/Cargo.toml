@@ -1,5 +1,5 @@
 [package]
-name = "example"
+name = "examples"
 version = "0.1.0"
 edition = "2021"
 
@@ -19,3 +19,7 @@ path = "concurrency_test.rs"
 [[example]]
 name = "snapshot"
 path = "snapshot.rs"
+
+[[example]]
+name = "practical_example"
+path = "practical_example.rs"

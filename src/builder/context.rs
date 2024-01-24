@@ -21,7 +21,7 @@ impl Version {
 }
 
 #[derive(Clone)]
-pub(crate) struct Compiling {
+pub struct Compiling {
     metadata: Metadata,
     snapshot_stage: SnapshotStage,
 }
@@ -107,6 +107,19 @@ impl Context {
             .as_mut()
             .ok_or(anyhow!("Not compiling"))?
             .metadata
+            .as_object_mut()
+            .unwrap()
+            .insert(name.to_string(), metadata);
+        Ok(())
+    }
+    pub async fn insert_global_raw_metadata(
+        &self,
+        name: impl ToString,
+        metadata: Metadata,
+    ) -> Result<()> {
+        self.metadata
+            .lock()
+            .await
             .as_object_mut()
             .unwrap()
             .insert(name.to_string(), metadata);

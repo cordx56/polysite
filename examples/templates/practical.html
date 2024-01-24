@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block body %}
+    <p>
+        <a href="{{ site_url }}">Example.com</a>
+    </p>
+    {{ _body | safe }}
+    {% for post in posts | sort(attribute="date") %}
+        <p>
+            <a href="{{ post._path }}">{{ post.title }}</a> - {{ post.date }}
+        </p>
+    {% endfor %}
+{% endblock body %}

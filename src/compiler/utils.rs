@@ -1,6 +1,13 @@
 use crate::*;
 use std::sync::Arc;
 
+/// Compiler function
+///
+/// compiler function takes `Context` as parameter,
+/// and returns `CompilerReturn` which is boxed future.
+pub trait CompileFunction: Fn(Context) -> CompilerReturn + Send + Sync {}
+impl<F> CompileFunction for F where F: Fn(Context) -> CompilerReturn + Send + Sync {}
+
 /// Generic compiler
 /// You can create new compiler using this.
 pub struct GenericCompiler {
@@ -10,7 +17,12 @@ impl GenericCompiler {
     pub fn empty() -> Self {
         Self::from(|ctx| compile!(Ok(ctx)))
     }
-    /// Create compiler from closure
+    /// Create compiler from closure which implements [`CompileFunction`].
+    ///
+    /// # Example
+    /// ```
+    /// GenericCompiler::from(|ctx| compile!({ Ok(ctx) }))
+    /// ```
     pub fn from<F: CompileFunction + 'static>(f: F) -> Self {
         Self {
             compile_method: Box::new(f),
@@ -44,4 +56,31 @@ impl Compiler for PipeCompiler {
             Ok(ctx)
         })
     }
+}
+
+/// [`pipe!`] macro may used to make large compiler from
+/// piping multiple compilers
+///
+/// # Example
+/// This example is similar to used in [`compiler::markdown::MarkdownCompiler`].
+///
+/// ```
+/// pipe!(
+///     SetExtension::new("html"),
+///     FileReader::new(),
+///     MarkdownRenderer::new(options),
+///     TemplateRenderer::new(template_engine, template),
+///     FileWriter::new(),
+/// )
+/// ```
+#[macro_export]
+macro_rules! pipe {
+    ($f:expr, $($n:expr),+ $(,)?) => {{
+        $crate::compiler::utils::PipeCompiler::new(vec![
+            $f.get(),
+            $(
+                $n.get(),
+            )+
+        ])
+    }}
 }

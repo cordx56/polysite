@@ -5,6 +5,38 @@ use serde::Serialize;
 use std::fs::remove_dir_all;
 use tokio::task::JoinSet;
 
+/// A site builder to use build one site
+///
+/// # Examples
+/// Same example is located at `examples/simple_markdown.rs`.
+/// ```
+/// use polysite::{
+///     compiler::{markdown::MarkdownCompiler, template::TemplateEngine},
+///     *,
+/// };
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let template_engine = TemplateEngine::new("templates/**").unwrap().get();
+///     Builder::new(Config::default())
+///         .insert_metadata("site_title", "Hello, polysite!")
+///         .await
+///         .unwrap()
+///         .add_step([
+///             Rule::new("posts")
+///                 .set_globs(["posts/**/*.md"])
+///                 .set_compiler(
+///                     MarkdownCompiler::new(template_engine.clone(), "index.html", None).get(),
+///                 ),
+///             Rule::new("markdown").set_globs(["**/*.md"]).set_compiler(
+///                 MarkdownCompiler::new(template_engine.clone(), "index.html", None).get(),
+///             ),
+///         ])
+///         .build()
+///         .await
+///         .unwrap();
+/// }
+/// ````
 pub struct Builder {
     ctx: Context,
     steps: Vec<Vec<Rule>>,
@@ -23,12 +55,9 @@ impl Builder {
     ///
     /// You can pass anything which can be serialized and deserialized to
     /// [`serde_json::Value`](https://docs.rs/serde_json/1/serde_json/enum.Value.html).
-    pub async fn insert_metadata(
-        &mut self,
-        name: impl ToString,
-        data: impl Serialize,
-    ) -> Result<()> {
-        self.ctx.insert_global_metadata(name, data).await
+    pub async fn insert_metadata(self, name: impl ToString, data: impl Serialize) -> Result<Self> {
+        self.ctx.insert_global_metadata(name, data).await?;
+        Ok(self)
     }
 
     /// Add build step

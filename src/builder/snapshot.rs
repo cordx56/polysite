@@ -9,7 +9,7 @@ use tokio::{
 /// stage count starts from 0
 /// stage count means "running stage" number
 #[derive(Clone)]
-pub(crate) struct SnapshotStage {
+pub struct SnapshotStage {
     notify: Arc<Notify>,
     stage: Arc<Mutex<usize>>,
 }

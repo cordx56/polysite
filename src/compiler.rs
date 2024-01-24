@@ -31,32 +31,11 @@ pub trait Compiler: Send + Sync {
     }
 }
 
-/// Compiler function
-///
-/// compiler function takes `Context` as parameter,
-/// and returns `CompilerReturn` which is boxed future.
-pub trait CompileFunction: Fn(Context) -> CompilerReturn + Send + Sync {}
-impl<F> CompileFunction for F where F: Fn(Context) -> CompilerReturn + Send + Sync {}
-
-/// compiler! macro may used to make compile function
-/// which returns boxed Future
+/// [`compile!`] macro may used to make compile function which returns boxed Future.
+/// This is provided for ease of creating boxed Future.
 #[macro_export]
 macro_rules! compile {
     ($b:expr) => {
         Box::new(Box::pin(async move { $b }))
     };
-}
-
-/// pipe! macro may used to make large compiler from
-/// piping multiple compilers
-#[macro_export]
-macro_rules! pipe {
-    ($f:expr, $($n:expr),+ $(,)?) => {{
-        $crate::compiler::utils::PipeCompiler::new(vec![
-            $f.get(),
-            $(
-                $n.get(),
-            )+
-        ])
-    }}
 }
