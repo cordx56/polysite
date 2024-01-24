@@ -63,13 +63,14 @@ impl Compiler for PipeCompiler {
 /// piping multiple compilers
 ///
 /// # Example
-/// This example will write source file as HTML file as-is.
+/// This example will read source as Markdown and write HTML to target.
 ///
 /// ```
 /// use polysite::{compiler::*, *};
 /// pipe!(
 ///     path::SetExtension::new("html"),
 ///     file::FileReader::new(),
+///     markdown::MarkdownRenderer::new(None),
 ///     file::FileWriter::new(),
 /// );
 /// ```
