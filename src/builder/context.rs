@@ -206,13 +206,15 @@ impl Context {
     /// In most cases, you would like to wait until stage 1, that means "first snapshot was taken".
     pub async fn wait_snapshot_until(&self, name: impl ToString, stage: usize) -> Result<()> {
         let name = name.to_string();
-        self.snapshot_managers
-            .lock()
-            .await
-            .get(&name)
-            .ok_or(anyhow!("Rule {} not found", name))?
-            .wait_until(stage)
-            .await;
+        let manager = {
+            self.snapshot_managers
+                .lock()
+                .await
+                .get(&name)
+                .ok_or(anyhow!("Rule {} not found", name))?
+                .clone()
+        };
+        manager.wait_until(stage).await;
         Ok(())
     }
     /// Save currently compiling [`Metadata`] as snapshot

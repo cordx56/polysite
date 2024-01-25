@@ -4,7 +4,7 @@
         <a href="{{ site_url }}">Example.com</a>
     </p>
     {{ _body | safe }}
-    {% for post in posts | sort(attribute="date") %}
+    {% for post in posts | sort(attribute="date") | reverse %}
         <p>
             <a href="{{ post._path }}">{{ post.title }}</a> - {{ post.date }}
         </p>

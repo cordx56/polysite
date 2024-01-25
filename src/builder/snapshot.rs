@@ -39,7 +39,7 @@ impl SnapshotStage {
 
 /// SnapshotManager
 /// manages 1 rule snapshots
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct SnapshotManager {
     current_stages: Arc<Mutex<Vec<usize>>>,
     notify: Arc<Notify>,
@@ -63,7 +63,7 @@ impl SnapshotManager {
             loop {
                 let next = stage.notified().await;
                 *current_stages.lock().await.get_mut(index).unwrap() = next;
-                notify.notify_waiters();
+                notify.notify_one();
             }
         });
     }
