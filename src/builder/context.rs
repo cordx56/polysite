@@ -83,7 +83,7 @@ impl Context {
         name: impl ToString,
         value: impl Serialize,
     ) -> Result<()> {
-        let metadata = to_metadata(value)?;
+        let metadata = Metadata::from_serializable(value)?;
         self.metadata
             .lock()
             .await
@@ -100,7 +100,7 @@ impl Context {
         name: impl ToString,
         value: impl Serialize,
     ) -> Result<()> {
-        let metadata = to_metadata(value)?;
+        let metadata = Metadata::from_serializable(value)?;
         self.compiling
             .as_mut()
             .ok_or(anyhow!("Not compiling"))?

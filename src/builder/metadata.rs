@@ -64,8 +64,17 @@ impl MetadataAsBytes for Metadata {
     }
 }
 
-pub fn to_metadata(data: impl Serialize) -> Result<Metadata> {
-    from_str(&to_string(&data).context("Serialize error")?).context("Deserialize error")
+/// Convert any [`Serialize`] object into
+pub trait FromSerializable {
+    fn from_serializable(data: impl Serialize) -> Result<Self>
+    where
+        Self: Sized;
+}
+impl FromSerializable for Metadata {
+    /// Convert any serializable value into [`Metadata`]
+    fn from_serializable(data: impl Serialize) -> Result<Self> {
+        from_str(&to_string(&data).context("Serialize error")?).context("Deserialize error")
+    }
 }
 
 pub fn new_object() -> Metadata {

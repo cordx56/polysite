@@ -50,12 +50,16 @@
 //!     simple_logger::SimpleLogger::new().env().init().unwrap();
 //!     let template_engine = TemplateEngine::new("templates/**").unwrap().get();
 //!     Builder::new(Config::default())
-//!         .insert_metadata("site_title", "Hello, polysite!")
-//!         .await
-//!         .unwrap()
-//!         .insert_metadata("site_url", "https://example.com")
-//!         .await
-//!         .unwrap()
+//!         .add_step(
+//!             [Rule::new("metadata").set_create(["metadata"]).set_compiler(
+//!                 SetMetadata::new()
+//!                     .global("site_title", "Hello, polysite!")
+//!                     .unwrap()
+//!                     .global("site_url", "https://example.com")
+//!                     .unwrap()
+//!                     .get(),
+//!             )],
+//!         )
 //!         .add_step([Rule::new("posts")
 //!             .set_globs(["posts/**/*.md"])
 //!             .set_compiler(

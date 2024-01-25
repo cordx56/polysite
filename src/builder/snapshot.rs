@@ -5,9 +5,10 @@ use tokio::{
 };
 
 /// SnapshotStage manager
-/// manages 1 compiler snapshot stage
-/// stage count starts from 0
-/// stage count means "running stage" number
+/// manages 1 compiler snapshot stage.
+///
+/// stage count starts from 0.
+/// stage count means "running stage" number.
 #[derive(Clone)]
 pub struct SnapshotStage {
     notify: Arc<Notify>,
@@ -67,7 +68,9 @@ impl SnapshotManager {
         });
     }
     /// Wait until all snapshots' stages became specified stage
-    /// stage number is minimum required stage number
+    ///
+    /// Stage number is minimum required stage number.
+    /// In most cases, you will specify stage number to 1.
     pub async fn wait_until(&self, stage: usize) {
         loop {
             if self

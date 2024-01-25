@@ -1,5 +1,6 @@
 pub mod file;
 pub mod markdown;
+pub mod metadata;
 pub mod path;
 pub mod snapshot;
 pub mod template;
