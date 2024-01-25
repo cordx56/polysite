@@ -26,12 +26,12 @@
 //! polysite uses metadata to save compile result and metadata can be used in other compilation.
 //!
 //! There are some default metadata:
-//! - `_rule`: Compiling rule name
-//! - `_version`: Compiling file version
-//! - `_source`: source file path
-//! - `_target`: target file path
-//! - `_path`: absolute URL path
-//! - `_body`: Content body. Some compilers save the result to this metadata.
+//! - [`_rule`][builder::metadata::RULE_META]: Compiling rule name
+//! - [`_version`][builder::metadata::VERSION_META]: Compiling file version
+//! - [`_source`][builder::metadata::SOURCE_FILE_META]: source file path
+//! - [`_target`][builder::metadata::TARGET_FILE_META]: target file path
+//! - [`_path`][builder::metadata::PATH_META]: absolute URL path
+//! - [`_body`][builder::metadata::BODY_META]: Content body. Some compilers save the result to this metadata.
 //!
 //! You can use these default metadata to create new compiler.
 //!

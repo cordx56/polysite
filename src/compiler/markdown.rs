@@ -12,8 +12,8 @@ use anyhow::anyhow;
 use pulldown_cmark::{html::push_html, Options, Parser};
 use std::sync::Arc;
 
-/// Markdown renderer will read `_body` metadata as markdown,
-/// render HTML, and store HTML as `_body` metadata.
+/// Markdown renderer will read [`_body`][crate::builder::metadata::BODY_META] metadata as markdown,
+/// render HTML, and store HTML as [`_body`][crate::builder::metadata::BODY_META] metadata.
 pub struct MarkdownRenderer {
     options: Options,
 }
@@ -50,10 +50,9 @@ impl Compiler for MarkdownRenderer {
 
 /// Markdown compiler
 ///
-/// Set target file extension to .html, read file,
-/// render markdown, save snapshot, wait snapshot
-/// if you specified, and render HTML using specified
-/// template engine and output target file.
+/// This compiler sets target file extension to .html, read file, render markdown, save snapshot,
+/// wait snapshot if you specified, and render HTML using specified [`compiler::template::TemplateEngine`]
+/// and output target file.
 pub struct MarkdownCompiler {
     template: String,
     template_engine: Arc<TemplateEngine>,
