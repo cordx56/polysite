@@ -42,7 +42,7 @@ impl Compiler for SetMetadata {
         let global = self.global.clone();
         compile!({
             for (k, v) in global.into_iter() {
-                ctx.insert_global_raw_metadata(k, v).await?;
+                ctx.insert_global_raw_metadata(k, v).await;
             }
             for (k, v) in compiling.into_iter() {
                 ctx.insert_compiling_raw_metadata(k, v)?;

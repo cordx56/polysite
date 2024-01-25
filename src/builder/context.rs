@@ -121,18 +121,13 @@ impl Context {
         Ok(())
     }
     /// Insert raw [`Metadata`] value to global metadata
-    pub async fn insert_global_raw_metadata(
-        &self,
-        name: impl ToString,
-        metadata: Metadata,
-    ) -> Result<()> {
+    pub async fn insert_global_raw_metadata(&self, name: impl ToString, metadata: Metadata) {
         self.metadata
             .lock()
             .await
             .as_object_mut()
             .unwrap()
             .insert(name.to_string(), metadata);
-        Ok(())
     }
     /// Insert raw [`Metadata`] value to compiling metadata
     pub fn insert_compiling_raw_metadata(
