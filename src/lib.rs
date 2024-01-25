@@ -93,7 +93,12 @@ pub mod builder;
 pub mod compiler;
 pub mod config;
 
-pub use builder::*;
+pub use builder::{
+    builder::Builder,
+    context::{Context, Version},
+    metadata::{FromSerializable, Metadata, MetadataAsBytes},
+    rule::{Conditions, Rule},
+};
 pub use compiler::{CompileResult, Compiler, CompilerReturn};
 pub use config::Config;
 
