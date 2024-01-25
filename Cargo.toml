@@ -1,10 +1,16 @@
 workspace = { members = ["examples"] }
 [package]
 name = "polysite"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["CHISEN Kaoru <cordx56@cordx.cx>"]
+description = "Highly customizable, polymorphic static site generator library"
+readme = "README.md"
+repository = "https://github.com/cordx56/polysite"
+license = "MPL-2.0"
+keywords = ["static", "web", "site", "generator", "blog"]
+include = ["/src", "/examples", "README.md", "LICENSE"]
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
