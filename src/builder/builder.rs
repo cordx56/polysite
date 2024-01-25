@@ -8,7 +8,6 @@ use tokio::task::JoinSet;
 /// A site builder to use build one site
 ///
 /// # Examples
-/// Same example is located at `examples/simple_markdown.rs`.
 /// ```
 /// use polysite::{
 ///     compiler::{markdown::MarkdownCompiler, template::TemplateEngine},

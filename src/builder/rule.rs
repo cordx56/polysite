@@ -39,13 +39,13 @@ impl Rule {
         self.name.clone()
     }
 
-    /// Set source file globs
+    /// Set a list of source file match globs
     pub fn set_globs(mut self, globs: impl IntoIterator<Item = impl ToString>) -> Self {
         let gs = globs.into_iter().map(|s| s.to_string()).collect();
         self.conditions = Some(Conditions::Globs(gs));
         self
     }
-    /// Set source file creation
+    /// Set source files name to create
     pub fn set_create(mut self, create: impl IntoIterator<Item = impl ToString>) -> Self {
         let create = create.into_iter().map(|s| s.to_string()).collect();
         self.conditions = Some(Conditions::Create(create));
@@ -54,15 +54,19 @@ impl Rule {
 
     /// Set compiler
     ///
-    /// The compiler passed to this method will be called in compilation task.
+    /// A [`Arc`] pointer of [`Compiler`] passed to this method will be called in compilation task.
     pub fn set_compiler(mut self, compiler: Arc<dyn Compiler>) -> Self {
         self.compiler = Some(compiler);
         self
     }
 
     /// Set compilation version
-    pub fn set_version(mut self, version: Version) -> Self {
-        self.version = version;
+    ///
+    /// If the same version of a source file path is registered for compilation, that file will be
+    /// skipped.
+    /// Also read [`Version`].
+    pub fn set_version(mut self, version: impl Into<Version>) -> Self {
+        self.version = version.into();
         self
     }
 
@@ -102,7 +106,11 @@ impl Rule {
         };
         let mut res = Vec::new();
         for p in paths.into_iter() {
-            if ctx.get_version(&self.version, &p).await.is_none() {
+            if ctx
+                .get_version_metadata(self.version.clone(), &p)
+                .await
+                .is_none()
+            {
                 ctx.insert_version(self.version.clone(), p.clone(), Metadata::Null)
                     .await?;
                 res.push(p)

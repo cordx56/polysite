@@ -65,7 +65,7 @@ impl CopyCompiler {
 impl Compiler for CopyCompiler {
     fn compile(&self, ctx: Context) -> CompilerReturn {
         compile!({
-            ctx.create_target_dir()?;
+            ctx.create_target_parent_dir()?;
             let src = ctx.source()?;
             let tgt = ctx.target()?;
             copy(src, tgt).context("Copy error")?;
