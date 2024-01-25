@@ -1,4 +1,4 @@
-use super::snapshot::*;
+use super::{metadata::*, snapshot::*};
 use crate::*;
 use anyhow::{anyhow, Context as _, Result};
 use serde::Serialize;

@@ -1,4 +1,7 @@
-use crate::*;
+use crate::{
+    builder::metadata::{PATH_META, TARGET_FILE_META},
+    *,
+};
 
 /// [`SetExtension`] will change target file's extension and URL path extension to specified one.
 pub struct SetExtension(String);

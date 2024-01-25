@@ -1,4 +1,4 @@
-use super::snapshot::*;
+use super::{context::Compiling, metadata::*, snapshot::*};
 use crate::*;
 use anyhow::{anyhow, Context as _, Error};
 use glob::glob;

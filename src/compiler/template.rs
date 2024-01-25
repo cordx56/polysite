@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{builder::metadata::BODY_META, *};
 use anyhow::{Context as _, Result};
 use std::sync::Arc;
 use tera::Tera;

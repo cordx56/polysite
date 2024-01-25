@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{builder::metadata::BODY_META, *};
 use anyhow::{anyhow, Context as _};
 use std::fs::copy;
 use std::io::Write;
