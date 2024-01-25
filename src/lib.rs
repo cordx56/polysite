@@ -41,7 +41,10 @@
 //!
 //! ```
 //! use polysite::{
-//!     compiler::{file::CopyCompiler, markdown::MarkdownCompiler, template::TemplateEngine},
+//!     compiler::{
+//!         file::CopyCompiler, markdown::MarkdownCompiler, metadata::SetMetadata,
+//!         template::TemplateEngine,
+//!     },
 //!     *,
 //! };
 //!

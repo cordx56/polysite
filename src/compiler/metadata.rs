@@ -8,10 +8,11 @@ use std::collections::HashMap;
 /// # Example
 /// ```
 /// use polysite::compiler::metadata::SetMetadata;
-/// SetMetadata::new().global("site_url", "https://example.ccom")
 /// SetMetadata::new()
-///     .global("site_url", "https://example.ccom")?
-///     .compiling("compiling", vec!["value"])?;
+///     .global("site_url", "https://example.ccom")
+///     .unwrap()
+///     .compiling("compiling", vec!["value"])
+///     .unwrap();
 /// ```
 pub struct SetMetadata {
     compiling: HashMap<String, Metadata>,

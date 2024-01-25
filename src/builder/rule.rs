@@ -30,7 +30,7 @@ impl Rule {
             conditions: None,
             matched: None,
             compiler: None,
-            version: Version::new(None),
+            version: Version::default(),
         }
     }
 

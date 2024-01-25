@@ -9,14 +9,19 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Version(String);
 impl Version {
-    pub fn new(s: Option<String>) -> Self {
-        Self(s.unwrap_or("default".to_string()))
+    pub fn new(s: String) -> Self {
+        Self(s)
     }
     pub fn get(&self) -> String {
         self.0.clone()
+    }
+}
+impl Default for Version {
+    fn default() -> Self {
+        Self("default".to_string())
     }
 }
 
@@ -146,7 +151,7 @@ impl Context {
             .ok_or(anyhow!("Rule metadata not set!"))?
             .as_str()
             .ok_or(anyhow!("Invalid value"))?;
-        Ok(Version::new(Some(version.to_string())))
+        Ok(Version::new(version.to_string()))
     }
     /// Get version
     pub async fn get_version(&self, version: &Version, path: &PathBuf) -> Option<Metadata> {
