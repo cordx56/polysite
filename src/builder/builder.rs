@@ -50,15 +50,6 @@ impl Builder {
         }
     }
 
-    /// Insert global metadata
-    ///
-    /// You can pass anything which can be serialized and deserialized to
-    /// [`serde_json::Value`](https://docs.rs/serde_json/1/serde_json/enum.Value.html).
-    pub async fn insert_metadata(self, name: impl ToString, data: impl Serialize) -> Result<Self> {
-        self.ctx.insert_global_metadata(name, data).await?;
-        Ok(self)
-    }
-
     /// Add build step
     ///
     /// This method receives rules as a parameter and push as build step
@@ -82,7 +73,7 @@ impl Builder {
             let mut set = JoinSet::new();
             for mut rule in step.into_iter() {
                 let ctx = self.ctx.clone();
-                rule.eval_conditions(&ctx).await?;
+                rule.eval_conditions(&ctx)?;
                 set.spawn(async move { (rule.get_name(), rule.compile(ctx).await) });
             }
             while let Some(join_res) = set.join_next().await {

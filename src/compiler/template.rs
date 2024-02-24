@@ -39,8 +39,8 @@ pub struct TemplateRenderer {
     template: String,
 }
 impl TemplateRenderer {
-    pub fn new(engine: Arc<TemplateEngine>, template: impl ToString) -> Self {
-        let template = template.to_string();
+    pub fn new(engine: Arc<TemplateEngine>, template: impl AsRef<str>) -> Self {
+        let template = template.as_ref().to_owned();
         Self { engine, template }
     }
 }
@@ -50,7 +50,7 @@ impl Compiler for TemplateRenderer {
         let template = self.template.clone();
         Box::new(compile!({
             let mut ctx = ctx;
-            let metadata = ctx.metadata().await;
+            let metadata = ctx.metadata();
             let body = engine.render(&template, &metadata)?;
             ctx.insert_compiling_metadata(BODY_META, body)?;
             Ok(ctx)

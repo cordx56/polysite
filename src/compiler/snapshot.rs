@@ -11,7 +11,7 @@ impl SaveSnapshot {
 impl Compiler for SaveSnapshot {
     fn compile(&self, ctx: Context) -> CompilerReturn {
         compile!({
-            ctx.save_snapshot().await?;
+            ctx.save_snapshot()?;
             Ok(ctx)
         })
     }
@@ -31,8 +31,8 @@ impl WaitSnapshot {
     }
     /// Add wait rule and until
     /// In most cases, until is 1
-    pub fn wait(mut self, rule: impl ToString, until: usize) -> Self {
-        self.rule_stage_set.push((rule.to_string(), until));
+    pub fn wait(mut self, rule: impl AsRef<str>, until: usize) -> Self {
+        self.rule_stage_set.push((rule.as_ref().to_owned(), until));
         self
     }
 }

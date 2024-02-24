@@ -6,8 +6,8 @@ use crate::{
 /// [`SetExtension`] will change target file's extension and URL path extension to specified one.
 pub struct SetExtension(String);
 impl SetExtension {
-    pub fn new(ext: impl ToString) -> Self {
-        Self(ext.to_string())
+    pub fn new(ext: impl AsRef<str>) -> Self {
+        Self(ext.as_ref().to_owned())
     }
 }
 impl Compiler for SetExtension {

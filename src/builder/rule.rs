@@ -23,8 +23,8 @@ pub struct Rule {
 
 impl Rule {
     /// Create new rule
-    pub fn new(name: impl ToString) -> Self {
-        let name = name.to_string();
+    pub fn new(name: impl AsRef<str>) -> Self {
+        let name = name.as_ref().to_owned();
         Rule {
             name,
             conditions: None,
@@ -40,14 +40,14 @@ impl Rule {
     }
 
     /// Set a list of source file match globs
-    pub fn set_globs(mut self, globs: impl IntoIterator<Item = impl ToString>) -> Self {
-        let gs = globs.into_iter().map(|s| s.to_string()).collect();
+    pub fn set_globs(mut self, globs: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+        let gs = globs.into_iter().map(|s| s.as_ref().to_owned()).collect();
         self.conditions = Some(Conditions::Globs(gs));
         self
     }
     /// Set source files name to create
-    pub fn set_create(mut self, create: impl IntoIterator<Item = impl ToString>) -> Self {
-        let create = create.into_iter().map(|s| s.to_string()).collect();
+    pub fn set_create(mut self, create: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+        let create = create.into_iter().map(|s| s.as_ref().to_owned()).collect();
         self.conditions = Some(Conditions::Create(create));
         self
     }
@@ -71,7 +71,7 @@ impl Rule {
     }
 
     /// Evaluate conditions and save it's result
-    pub(super) async fn eval_conditions(&mut self, ctx: &Context) -> Result<(), Error> {
+    pub(super) fn eval_conditions(&mut self, ctx: &Context) -> Result<(), Error> {
         let src_dir = ctx.config().source_dir();
         let paths: Vec<_> = match self
             .conditions
@@ -106,13 +106,8 @@ impl Rule {
         };
         let mut res = Vec::new();
         for p in paths.into_iter() {
-            if ctx
-                .get_version_metadata(self.version.clone(), &p)
-                .await
-                .is_none()
-            {
-                ctx.insert_version(self.version.clone(), p.clone(), Metadata::Null)
-                    .await?;
+            if ctx.get_version_metadata(self.version.clone(), &p).is_none() {
+                ctx.insert_version(self.version.clone(), p.clone(), Metadata::Null)?;
                 res.push(p)
             }
         }
@@ -125,7 +120,7 @@ impl Rule {
         let matched = match self.matched.clone() {
             Some(m) => m,
             None => {
-                self.eval_conditions(&ctx).await?;
+                self.eval_conditions(&ctx)?;
                 self.matched
                     .clone()
                     .ok_or(anyhow!("Condition evaluation error"))?
@@ -144,7 +139,7 @@ impl Rule {
             let path = PathBuf::from("/").join(path);
             // Make Snapshot stage
             let snapshot_stage = SnapshotStage::new();
-            snapshot_manager.push(snapshot_stage.clone()).await;
+            snapshot_manager.push(snapshot_stage.clone());
             // Make compiling data
             let compiling = Compiling::new(snapshot_stage);
             let mut new_ctx = ctx.clone();
@@ -162,8 +157,7 @@ impl Rule {
             new_ctx.insert_compiling_metadata(VERSION_META, self.version.get())?;
             tasks.push(compiler.compile(new_ctx));
         }
-        ctx.register_snapshot_manager(self.get_name(), snapshot_manager)
-            .await;
+        ctx.register_snapshot_manager(self.get_name(), snapshot_manager);
         // Start compilation tasks
         let mut set = JoinSet::new();
         for task in tasks {
@@ -178,8 +172,7 @@ impl Rule {
                 self.version.clone(),
                 res.source()?,
                 compiling_metadata.clone(),
-            )
-            .await?;
+            )?;
             info!(
                 "Compiled: {} -> {}",
                 res.source()?.display(),
@@ -188,8 +181,7 @@ impl Rule {
             results.push(compiling_metadata);
         }
         let metadata = Metadata::Array(results);
-        ctx.insert_global_metadata(self.get_name(), metadata)
-            .await?;
+        ctx.insert_global_metadata(self.get_name(), metadata)?;
         Ok(ctx)
     }
 }

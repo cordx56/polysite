@@ -66,10 +66,10 @@ impl MarkdownCompiler {
     /// markdown rendering option
     pub fn new(
         template_engine: Arc<TemplateEngine>,
-        template: impl ToString,
+        template: impl AsRef<str>,
         options: Option<Options>,
     ) -> Self {
-        let template = template.to_string();
+        let template = template.as_ref().to_owned();
         Self {
             template,
             template_engine,
@@ -77,7 +77,7 @@ impl MarkdownCompiler {
             wait_snapshots: WaitSnapshot::new(),
         }
     }
-    pub fn wait_snapshot(mut self, rule: impl ToString, until: usize) -> Self {
+    pub fn wait_snapshot(mut self, rule: impl AsRef<str>, until: usize) -> Self {
         self.wait_snapshots = self.wait_snapshots.wait(rule, until);
         self
     }

@@ -1,8 +1,5 @@
-use std::sync::Arc;
-use tokio::{
-    spawn,
-    sync::{Mutex, Notify},
-};
+use std::sync::{Arc, Mutex};
+use tokio::{spawn, sync::Notify};
 
 /// SnapshotStage manager
 /// manages 1 compiler snapshot stage.
@@ -22,17 +19,17 @@ impl SnapshotStage {
         }
     }
     /// Get current, waiting stage
-    pub async fn current_stage(&self) -> usize {
-        *self.stage.lock().await
+    pub fn current_stage(&self) -> usize {
+        *self.stage.lock().unwrap()
     }
     /// Wait until notified and return next stage count
     pub async fn notified(&self) -> usize {
         self.notify.notified().await;
-        *self.stage.lock().await
+        self.current_stage()
     }
     /// Notifies all waiters
-    pub async fn notify_waiters(&self) {
-        *self.stage.lock().await += 1;
+    pub fn notify_waiters(&self) {
+        *self.stage.lock().unwrap() += 1;
         self.notify.notify_waiters();
     }
 }
@@ -51,18 +48,18 @@ impl SnapshotManager {
             notify: Arc::new(Notify::new()),
         }
     }
-    /// Register new `SnapshotStage`
-    pub async fn push(&self, stage: SnapshotStage) {
-        let current_stage = stage.current_stage().await;
+    /// Register new [`SnapshotStage`]
+    pub fn push(&self, stage: SnapshotStage) {
+        let current_stage = stage.current_stage();
         let current_stages = self.current_stages.clone();
-        let mut current_stages_locked = self.current_stages.lock().await;
+        let mut current_stages_locked = self.current_stages.lock().unwrap();
         let index = current_stages_locked.len();
         current_stages_locked.push(current_stage);
         let notify = self.notify.clone();
         spawn(async move {
             loop {
                 let next = stage.notified().await;
-                *current_stages.lock().await.get_mut(index).unwrap() = next;
+                *current_stages.lock().unwrap().get_mut(index).unwrap() = next;
                 notify.notify_one();
             }
         });
@@ -76,7 +73,7 @@ impl SnapshotManager {
             if self
                 .current_stages
                 .lock()
-                .await
+                .unwrap()
                 .iter()
                 .filter(|s| **s < stage)
                 .next()

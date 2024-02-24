@@ -6,8 +6,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// [`Version`] represents compilation file version.
 /// If the same version of a source file path is registered for compilation, that file will be
@@ -24,9 +23,9 @@ impl Default for Version {
         Self("default".to_string())
     }
 }
-impl<S: ToString> From<S> for Version {
+impl<S: AsRef<str>> From<S> for Version {
     fn from(value: S) -> Self {
-        Self(value.to_string())
+        Self(value.as_ref().to_owned())
     }
 }
 
@@ -70,8 +69,8 @@ impl Context {
     }
 
     /// Get [`Metadata`] that merges global and compiling metadata
-    pub async fn metadata(&self) -> Metadata {
-        let mut global = self.metadata.lock().await.clone();
+    pub fn metadata(&self) -> Metadata {
+        let mut global = self.metadata.lock().unwrap().clone();
         if let Some(c) = &self.compiling {
             global = join_metadata(global, c.metadata.clone());
         }
@@ -88,18 +87,13 @@ impl Context {
     /// Insert global [`Metadata`]
     ///
     /// You can pass anything which can be serialized and deserialized to [`serde_json::Value`].
-    pub async fn insert_global_metadata(
+    pub fn insert_global_metadata(
         &self,
-        name: impl ToString,
+        name: impl AsRef<str>,
         value: impl Serialize,
     ) -> Result<()> {
         let metadata = Metadata::from_serializable(value)?;
-        self.metadata
-            .lock()
-            .await
-            .as_object_mut()
-            .unwrap()
-            .insert(name.to_string(), metadata);
+        self.insert_global_raw_metadata(name, metadata);
         Ok(())
     }
     /// Insert compiling [`Metadata`]
@@ -107,32 +101,26 @@ impl Context {
     /// You can pass anything which can be serialized and deserialized to [`serde_json::Value`].
     pub fn insert_compiling_metadata(
         &mut self,
-        name: impl ToString,
+        name: impl AsRef<str>,
         value: impl Serialize,
     ) -> Result<()> {
         let metadata = Metadata::from_serializable(value)?;
-        self.compiling
-            .as_mut()
-            .ok_or(anyhow!("Not compiling"))?
-            .metadata
-            .as_object_mut()
-            .unwrap()
-            .insert(name.to_string(), metadata);
+        self.insert_compiling_raw_metadata(name.as_ref().to_owned(), metadata);
         Ok(())
     }
     /// Insert raw [`Metadata`] value to global metadata
-    pub async fn insert_global_raw_metadata(&self, name: impl ToString, metadata: Metadata) {
+    pub fn insert_global_raw_metadata(&self, name: impl AsRef<str>, metadata: Metadata) {
         self.metadata
             .lock()
-            .await
+            .unwrap()
             .as_object_mut()
             .unwrap()
-            .insert(name.to_string(), metadata);
+            .insert(name.as_ref().to_owned(), metadata);
     }
     /// Insert raw [`Metadata`] value to compiling metadata
     pub fn insert_compiling_raw_metadata(
         &mut self,
-        name: impl ToString,
+        name: impl AsRef<str>,
         metadata: Metadata,
     ) -> Result<()> {
         self.compiling
@@ -141,7 +129,7 @@ impl Context {
             .metadata
             .as_object_mut()
             .unwrap()
-            .insert(name.to_string(), metadata);
+            .insert(name.as_ref().to_owned(), metadata);
         Ok(())
     }
 
@@ -156,13 +144,13 @@ impl Context {
         Ok(version.into())
     }
     /// Get specified [`Version`] and source's metadata'
-    pub async fn get_version_metadata(
+    pub fn get_version_metadata(
         &self,
         version: impl Into<Version>,
         path: &PathBuf,
     ) -> Option<Metadata> {
         let version = version.into();
-        let versions = self.versions.lock().await;
+        let versions = self.versions.lock().unwrap();
         if let Some(v) = versions.get(&version) {
             v.get(path).cloned()
         } else {
@@ -170,14 +158,14 @@ impl Context {
         }
     }
     /// Insert specified [`Version`] and source's metadata
-    pub async fn insert_version(
+    pub fn insert_version(
         &self,
         version: impl Into<Version>,
         path: PathBuf,
         metadata: Metadata,
     ) -> Result<()> {
         let version = version.into();
-        let mut versions = self.versions.lock().await;
+        let mut versions = self.versions.lock().unwrap();
         let version = match versions.get_mut(&version) {
             Some(v) => v,
             None => {
@@ -193,19 +181,22 @@ impl Context {
         self.compiling = compiling;
     }
 
-    /// Register SnapshotManager
-    pub(crate) async fn register_snapshot_manager(&self, s: impl ToString, m: SnapshotManager) {
-        self.snapshot_managers.lock().await.insert(s.to_string(), m);
+    /// Register [`SnapshotManager`]
+    pub(crate) fn register_snapshot_manager(&self, s: impl AsRef<str>, m: SnapshotManager) {
+        self.snapshot_managers
+            .lock()
+            .unwrap()
+            .insert(s.as_ref().to_owned(), m);
     }
     /// Wait snapshot until specified stage.
     /// In most cases, you would like to wait until stage 1, that means "first snapshot was taken".
-    pub async fn wait_snapshot_until(&self, name: impl ToString, stage: usize) -> Result<()> {
-        let name = name.to_string();
+    pub async fn wait_snapshot_until(&self, name: impl AsRef<str>, stage: usize) -> Result<()> {
+        let name = name.as_ref();
         let manager = {
             self.snapshot_managers
                 .lock()
-                .await
-                .get(&name)
+                .unwrap()
+                .get(name)
                 .ok_or(anyhow!("Rule {} not found", name))?
                 .clone()
         };
@@ -213,10 +204,10 @@ impl Context {
         Ok(())
     }
     /// Save currently compiling [`Metadata`] as snapshot
-    pub async fn save_snapshot(&self) -> Result<()> {
+    pub fn save_snapshot(&self) -> Result<()> {
         let rule = self.rule()?;
         let compiling_metadata = self.compiling_metadata()?.clone();
-        let mut locked = self.metadata.lock().await;
+        let mut locked = self.metadata.lock().unwrap();
         let obj = locked.as_object_mut().unwrap();
         if let Some(Metadata::Array(a)) = obj.get_mut(&rule) {
             a.push(compiling_metadata);
@@ -227,8 +218,7 @@ impl Context {
             .as_ref()
             .unwrap()
             .snapshot_stage
-            .notify_waiters()
-            .await;
+            .notify_waiters();
         Ok(())
     }
 
