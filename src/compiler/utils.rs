@@ -42,8 +42,14 @@ pub struct PipeCompiler {
     compilers: Vec<Arc<dyn Compiler>>,
 }
 impl PipeCompiler {
-    pub fn new(compilers: Vec<Arc<dyn Compiler>>) -> Self {
-        Self { compilers }
+    pub fn new() -> Self {
+        Self {
+            compilers: Vec::new(),
+        }
+    }
+    pub fn add_compiler(mut self, compiler: Arc<dyn Compiler>) -> Self {
+        self.compilers.push(compiler);
+        self
     }
 }
 impl Compiler for PipeCompiler {
@@ -77,12 +83,11 @@ impl Compiler for PipeCompiler {
 #[macro_export]
 macro_rules! pipe {
     ($f:expr, $($n:expr),+ $(,)?) => {{
-        $crate::compiler::utils::PipeCompiler::new(vec![
-            $f.get(),
+        $crate::compiler::utils::PipeCompiler::new()
+            .add_compiler($f.get())
             $(
-                $n.get(),
+                .add_compiler($n.get())
             )+
-        ])
     }}
 }
 pub use pipe;
