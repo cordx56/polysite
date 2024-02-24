@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context as _, Result};
 use serde::Serialize;
-use serde_json::{from_str, json, to_string, Number, Value};
+use serde_json::{json, to_value, Number, Value};
 
 pub const RULE_META: &str = "_rule";
 pub const SOURCE_FILE_META: &str = "_source";
@@ -73,7 +73,7 @@ pub trait FromSerializable {
 impl FromSerializable for Metadata {
     /// Convert any serializable value into [`Metadata`]
     fn from_serializable(data: impl Serialize) -> Result<Self> {
-        from_str(&to_string(&data).context("Serialize error")?).context("Deserialize error")
+        to_value(&data).context("Serialize error")
     }
 }
 
