@@ -105,7 +105,7 @@ impl Context {
         value: impl Serialize,
     ) -> Result<()> {
         let metadata = Metadata::from_serializable(value)?;
-        self.insert_compiling_raw_metadata(name.as_ref().to_owned(), metadata);
+        self.insert_compiling_raw_metadata(name.as_ref().to_owned(), metadata)?;
         Ok(())
     }
     /// Insert raw [`Metadata`] value to global metadata

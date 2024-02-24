@@ -1,7 +1,6 @@
 use crate::*;
 use anyhow::{Context as _, Result};
 use log::info;
-use serde::Serialize;
 use std::fs::remove_dir_all;
 use tokio::task::JoinSet;
 
