@@ -11,8 +11,7 @@ pub const PATH_META: &str = "_path";
 pub const VERSION_META: &str = "_version";
 pub const BODY_META: &str = "_body";
 
-/// Use [`serde_json::Value`] as metadata because the [`serde::Serialize`] trait is not object
-/// safe.
+/// Metadata for storing compile result or your site metadata.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(untagged)]
 pub enum Metadata {

@@ -93,13 +93,16 @@ pub mod builder;
 pub mod compiler;
 pub mod config;
 
+#[doc(inline)]
 pub use builder::{
     builder::Builder,
     context::{Context, Version},
     metadata::Metadata,
     rule::{Conditions, Rule},
 };
+#[doc(inline)]
 pub use compiler::{CompileResult, Compiler, CompilerReturn};
+#[doc(inline)]
 pub use config::Config;
 
 #[cfg(test)]
