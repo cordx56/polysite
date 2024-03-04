@@ -17,9 +17,7 @@ use tokio::task::JoinSet;
 /// async fn main() {
 ///     let template_engine = TemplateEngine::new("templates/**").unwrap().get();
 ///     Builder::new(Config::default())
-///         .insert_metadata("site_title", "Hello, polysite!")
-///         .await
-///         .unwrap()
+///         .insert_metadata("site_title", Metadata::from("Hello, polysite!"))
 ///         .add_step([
 ///             Rule::new("posts")
 ///                 .set_globs(["posts/**/*.md"])
@@ -47,6 +45,11 @@ impl Builder {
             ctx: Context::new(config),
             steps: Vec::new(),
         }
+    }
+
+    pub fn insert_metadata(self, key: impl AsRef<str>, data: Metadata) -> Self {
+        self.ctx.insert_global_metadata(key.as_ref(), data);
+        self
     }
 
     /// Add build step

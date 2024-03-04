@@ -96,7 +96,7 @@ pub mod config;
 pub use builder::{
     builder::Builder,
     context::{Context, Version},
-    metadata::{FromSerializable, Metadata, MetadataAsBytes},
+    metadata::Metadata,
     rule::{Conditions, Rule},
 };
 pub use compiler::{CompileResult, Compiler, CompilerReturn};

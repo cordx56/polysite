@@ -1,8 +1,6 @@
 use super::{metadata::*, snapshot::*};
 use crate::*;
 use anyhow::{anyhow, Context as _, Result};
-use serde::Serialize;
-use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -36,7 +34,7 @@ pub struct Compiling {
 }
 impl Compiling {
     pub fn new(snapshot_stage: SnapshotStage) -> Self {
-        let metadata = new_object();
+        let metadata = Metadata::new();
         Self {
             metadata,
             snapshot_stage,
@@ -50,7 +48,7 @@ impl Compiling {
 /// This holds global, compiling (local) and versions' [`Metadata`], snapshot manager.
 /// This also provides some helper methods.
 pub struct Context {
-    metadata: Arc<Mutex<Metadata>>,
+    metadata: Metadata,
     versions: Arc<Mutex<HashMap<Version, HashMap<PathBuf, Metadata>>>>,
     compiling: Option<Compiling>,
     snapshot_managers: Arc<Mutex<HashMap<String, SnapshotManager>>>,
@@ -60,7 +58,7 @@ pub struct Context {
 impl Context {
     pub fn new(config: Config) -> Self {
         Self {
-            metadata: Arc::new(Mutex::new(json!({}))),
+            metadata: Metadata::new(),
             versions: Arc::new(Mutex::new(HashMap::new())),
             compiling: None,
             snapshot_managers: Arc::new(Mutex::new(HashMap::new())),
@@ -70,9 +68,9 @@ impl Context {
 
     /// Get [`Metadata`] that merges global and compiling metadata
     pub fn metadata(&self) -> Metadata {
-        let mut global = self.metadata.lock().unwrap().clone();
+        let mut global = self.metadata.clone();
         if let Some(c) = &self.compiling {
-            global = join_metadata(global, c.metadata.clone());
+            global = Metadata::join(global, c.metadata.clone());
         }
         global
     }
@@ -84,53 +82,23 @@ impl Context {
             .ok_or(anyhow!("Not compiling"))?
             .metadata)
     }
-    /// Insert global [`Metadata`]
-    ///
-    /// You can pass anything which can be serialized and deserialized to [`serde_json::Value`].
-    pub fn insert_global_metadata(
-        &self,
-        name: impl AsRef<str>,
-        value: impl Serialize,
-    ) -> Result<()> {
-        let metadata = Metadata::from_serializable(value)?;
-        self.insert_global_raw_metadata(name, metadata);
-        Ok(())
+    /// Insert [`Metadata`] value to global metadata
+    pub fn insert_global_metadata(&self, name: impl AsRef<str>, metadata: Metadata) {
+        if let Metadata::Map(map) = &self.metadata {
+            map.lock()
+                .unwrap()
+                .insert(name.as_ref().to_owned(), metadata);
+        }
     }
-    /// Insert compiling [`Metadata`]
-    ///
-    /// You can pass anything which can be serialized and deserialized to [`serde_json::Value`].
-    pub fn insert_compiling_metadata(
-        &mut self,
-        name: impl AsRef<str>,
-        value: impl Serialize,
-    ) -> Result<()> {
-        let metadata = Metadata::from_serializable(value)?;
-        self.insert_compiling_raw_metadata(name.as_ref().to_owned(), metadata)?;
-        Ok(())
-    }
-    /// Insert raw [`Metadata`] value to global metadata
-    pub fn insert_global_raw_metadata(&self, name: impl AsRef<str>, metadata: Metadata) {
-        self.metadata
-            .lock()
-            .unwrap()
-            .as_object_mut()
-            .unwrap()
-            .insert(name.as_ref().to_owned(), metadata);
-    }
-    /// Insert raw [`Metadata`] value to compiling metadata
-    pub fn insert_compiling_raw_metadata(
-        &mut self,
-        name: impl AsRef<str>,
-        metadata: Metadata,
-    ) -> Result<()> {
-        self.compiling
-            .as_mut()
-            .ok_or(anyhow!("Not compiling"))?
-            .metadata
-            .as_object_mut()
-            .unwrap()
-            .insert(name.as_ref().to_owned(), metadata);
-        Ok(())
+    /// Insert [`Metadata`] value to compiling metadata
+    pub fn insert_compiling_metadata(&mut self, name: impl AsRef<str>, metadata: Metadata) {
+        if let Some(compiling) = &self.compiling {
+            if let Metadata::Map(map) = &compiling.metadata {
+                map.lock()
+                    .unwrap()
+                    .insert(name.as_ref().to_owned(), metadata);
+            }
+        }
     }
 
     /// Get currently compiling [`Version`]
@@ -141,6 +109,8 @@ impl Context {
             .ok_or(anyhow!("Rule metadata not set!"))?
             .as_str()
             .ok_or(anyhow!("Invalid value"))?;
+        let version = version.lock().unwrap();
+        let version = version.as_str();
         Ok(version.into())
     }
     /// Get specified [`Version`] and source's metadata'
@@ -207,12 +177,15 @@ impl Context {
     pub fn save_snapshot(&self) -> Result<()> {
         let rule = self.rule()?;
         let compiling_metadata = self.compiling_metadata()?.clone();
-        let mut locked = self.metadata.lock().unwrap();
-        let obj = locked.as_object_mut().unwrap();
-        if let Some(Metadata::Array(a)) = obj.get_mut(&rule) {
-            a.push(compiling_metadata);
+        if let Some(Metadata::Array(a)) = self.metadata.get(&rule) {
+            a.lock().unwrap().push(compiling_metadata);
         } else {
-            obj.insert(rule, Metadata::Array(vec![compiling_metadata]));
+            if let Metadata::Map(map) = &self.metadata {
+                map.lock().unwrap().insert(
+                    rule,
+                    Metadata::Array(Arc::new(Mutex::new(vec![compiling_metadata]))),
+                );
+            }
         }
         self.compiling
             .as_ref()
@@ -225,12 +198,16 @@ impl Context {
     /// Get currently compiling rule name
     pub fn rule(&self) -> Result<String> {
         let compiling = self.compiling_metadata()?;
-        let rule = compiling
+        let binding = compiling
             .get(RULE_META)
-            .ok_or(anyhow!("Rule metadata not set!"))?
+            .ok_or(anyhow!("Rule metadata not set!"))?;
+        let rule = binding
             .as_str()
-            .ok_or(anyhow!("Invalid value"))?;
-        Ok(rule.to_string())
+            .ok_or(anyhow!("Invalid value"))?
+            .lock()
+            .unwrap()
+            .clone();
+        Ok(rule)
     }
 
     /// Get currently compiling source file path
@@ -240,7 +217,10 @@ impl Context {
             .get(SOURCE_FILE_META)
             .ok_or(anyhow!("Source file metadata not set!"))?
             .as_str()
-            .ok_or(anyhow!("Invalid value"))?;
+            .ok_or(anyhow!("Invalid value"))?
+            .lock()
+            .unwrap()
+            .clone();
         Ok(PathBuf::from(source))
     }
     /// Get currently compiling target file path
@@ -250,7 +230,10 @@ impl Context {
             .get(TARGET_FILE_META)
             .ok_or(anyhow!("Target file metadata not set!"))?
             .as_str()
-            .ok_or(anyhow!("Invalid value"))?;
+            .ok_or(anyhow!("Invalid value"))?
+            .lock()
+            .unwrap()
+            .clone();
         Ok(PathBuf::from(target))
     }
     /// Get currently compiling URL path
@@ -260,7 +243,10 @@ impl Context {
             .get(PATH_META)
             .ok_or(anyhow!("Path metadata not set!"))?
             .as_str()
-            .ok_or(anyhow!("Invalid value"))?;
+            .ok_or(anyhow!("Invalid value"))?
+            .lock()
+            .unwrap()
+            .clone();
         Ok(PathBuf::from(path))
     }
     /// Get currently compiling body [`Metadata`], which can be [`Vec<u8>`] or [`String`].
@@ -290,9 +276,9 @@ impl Context {
     pub fn get_source_data(&self) -> Result<Metadata> {
         let body = self.get_source_body()?;
         if let Ok(s) = String::from_utf8(body.clone()) {
-            Ok(Metadata::String(s))
+            Ok(Metadata::String(Arc::new(Mutex::new(s))))
         } else {
-            Ok(Metadata::from_bytes(body))
+            Ok(Metadata::Bytes(Arc::new(Mutex::new(body))))
         }
     }
     /// Create target file's parent directory

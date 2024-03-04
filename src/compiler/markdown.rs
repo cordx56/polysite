@@ -33,16 +33,19 @@ impl Compiler for MarkdownRenderer {
             let mut ctx = ctx;
             let body = ctx.body()?;
             let body = body.as_str().ok_or(anyhow!("Body is not string"))?;
+            let body = body.lock().unwrap();
             let fm = fronma::parser::parse::<Metadata>(&body)
                 .map_err(|e| anyhow!("Front matter parse error: {:?}", e))?;
             let file_metadata = fm.headers;
             let parser = Parser::new_ext(fm.body, options);
             let mut html = String::new();
             push_html(&mut html, parser);
-            for (k, v) in file_metadata.as_object().unwrap().clone().into_iter() {
-                ctx.insert_compiling_metadata(k, v)?;
+            if let Metadata::Map(map) = file_metadata {
+                for (k, v) in map.lock().unwrap().clone().into_iter() {
+                    ctx.insert_compiling_metadata(k, v);
+                }
             }
-            ctx.insert_compiling_metadata(BODY_META, html)?;
+            ctx.insert_compiling_metadata(BODY_META, Metadata::from(html));
             Ok(ctx)
         }))
     }

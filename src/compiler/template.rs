@@ -52,7 +52,7 @@ impl Compiler for TemplateRenderer {
             let mut ctx = ctx;
             let metadata = ctx.metadata();
             let body = engine.render(&template, &metadata)?;
-            ctx.insert_compiling_metadata(BODY_META, body)?;
+            ctx.insert_compiling_metadata(BODY_META, Metadata::from(body));
             Ok(ctx)
         }))
     }

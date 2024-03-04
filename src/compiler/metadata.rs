@@ -27,12 +27,12 @@ impl SetMetadata {
     }
     pub fn global(mut self, k: impl AsRef<str>, v: impl Serialize) -> Result<Self> {
         self.global
-            .insert(k.as_ref().to_owned(), Metadata::from_serializable(v)?);
+            .insert(k.as_ref().to_owned(), Metadata::from_ser(v)?);
         Ok(self)
     }
     pub fn compiling(mut self, k: impl AsRef<str>, v: impl Serialize) -> Result<Self> {
         self.compiling
-            .insert(k.as_ref().to_owned(), Metadata::from_serializable(v)?);
+            .insert(k.as_ref().to_owned(), Metadata::from_ser(v)?);
         Ok(self)
     }
 }
@@ -42,10 +42,10 @@ impl Compiler for SetMetadata {
         let global = self.global.clone();
         compile!({
             for (k, v) in global.into_iter() {
-                ctx.insert_global_raw_metadata(k, v);
+                ctx.insert_global_metadata(k, v);
             }
             for (k, v) in compiling.into_iter() {
-                ctx.insert_compiling_raw_metadata(k, v)?;
+                ctx.insert_compiling_metadata(k, v);
             }
             Ok(ctx)
         })

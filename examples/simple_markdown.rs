@@ -1,5 +1,5 @@
 use polysite::{
-    compiler::{markdown::MarkdownCompiler, metadata::SetMetadata, template::TemplateEngine},
+    compiler::{markdown::MarkdownCompiler, template::TemplateEngine},
     *,
 };
 
@@ -8,12 +8,7 @@ async fn main() {
     simple_logger::SimpleLogger::new().env().init().unwrap();
     let template_engine = TemplateEngine::new("templates/**").unwrap().get();
     Builder::new(Config::default())
-        .add_step([Rule::new("metadata").set_create("metadata").set_compiler(
-            SetMetadata::new()
-                .global("site_title", "Hello, polysite!")
-                .unwrap()
-                .get(),
-        )])
+        .insert_metadata("site_title", Metadata::from("Hello, polysite!"))
         .add_step([
             Rule::new("posts")
                 .set_globs(["posts/**/*.md"])

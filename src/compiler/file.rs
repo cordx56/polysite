@@ -16,7 +16,7 @@ impl Compiler for FileReader {
         compile!({
             let mut ctx = ctx;
             let src = ctx.get_source_data()?;
-            ctx.insert_compiling_raw_metadata(BODY_META, src)?;
+            ctx.insert_compiling_metadata(BODY_META, src);
             Ok(ctx)
         })
     }
@@ -40,12 +40,11 @@ impl Compiler for FileWriter {
             let body = ctx.body()?;
             if let Some(s) = body.as_str() {
                 target
-                    .write(s.as_bytes())
+                    .write(s.lock().unwrap().as_bytes())
                     .with_context(|| format!("Failed to write file {}", target_display))?;
-            } else if body.is_array() {
-                let bytes = body.as_bytes()?;
+            } else if let Metadata::Bytes(bytes) = body {
                 target
-                    .write(&bytes)
+                    .write(bytes.lock().unwrap().as_slice())
                     .with_context(|| format!("Failed to write file {}", target_display))?;
             } else {
                 return Err(anyhow!("Invalid body format"));

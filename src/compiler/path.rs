@@ -17,9 +17,15 @@ impl Compiler for SetExtension {
             let mut target = ctx.target()?;
             let mut path = ctx.path()?;
             target.set_extension(ext.clone());
-            ctx.insert_compiling_metadata(TARGET_FILE_META, target)?;
+            ctx.insert_compiling_metadata(
+                TARGET_FILE_META,
+                Metadata::from(target.to_string_lossy().to_string()),
+            );
             path.set_extension(ext);
-            ctx.insert_compiling_metadata(PATH_META, path)?;
+            ctx.insert_compiling_metadata(
+                PATH_META,
+                Metadata::from(path.to_string_lossy().to_string()),
+            );
             Ok(ctx)
         })
     }

@@ -15,7 +15,7 @@ include = ["/src", "/examples", "README.md", "LICENSE"]
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 glob = "0.3"
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 anyhow = "1"
 tera = "1"

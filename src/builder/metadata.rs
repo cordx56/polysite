@@ -1,6 +1,8 @@
-use anyhow::{anyhow, Context as _, Result};
-use serde::Serialize;
-use serde_json::{json, to_value, Number, Value};
+use anyhow::{Context as _, Result};
+use serde::{Deserialize, Serialize};
+use serde_json::{from_value, to_value};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 pub const RULE_META: &str = "_rule";
 pub const SOURCE_FILE_META: &str = "_source";
@@ -11,81 +13,59 @@ pub const BODY_META: &str = "_body";
 
 /// Use [`serde_json::Value`] as metadata because the [`serde::Serialize`] trait is not object
 /// safe.
-pub type Metadata = Value;
-
-/// Trait to handle bytes data as metadata
-pub trait MetadataAsBytes {
-    fn as_bytes(&self) -> Result<Vec<u8>>;
-    fn from_bytes(bytes: Vec<u8>) -> Self;
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum Metadata {
+    Null,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    String(Arc<Mutex<String>>),
+    Array(Arc<Mutex<Vec<Metadata>>>),
+    Map(Arc<Mutex<HashMap<String, Metadata>>>),
+    Bytes(Arc<Mutex<Vec<u8>>>),
 }
-impl MetadataAsBytes for Metadata {
-    fn as_bytes(&self) -> Result<Vec<u8>> {
-        let array = self.as_array().ok_or(anyhow!("Not bytes data"))?;
-        let data_size = array
-            .get(0)
-            .ok_or(anyhow!("Invalid bytes data"))?
-            .as_u64()
-            .ok_or(anyhow!("Invalid bytes data"))?;
-        let byte_size = 8;
-        let remove = byte_size - (data_size % byte_size);
-        let (_, remain) = array.split_at(1);
-        let mut res = Vec::new();
-        for data in remain {
-            let data = data.as_u64().ok_or(anyhow!("Invalid bytes data"))?;
-            let bytes = data.to_be_bytes();
-            res.extend_from_slice(bytes.as_slice());
-        }
-        for _ in 0..remove {
-            res.pop();
-        }
-        Ok(res)
+impl Metadata {
+    pub fn new() -> Self {
+        Metadata::Map(Arc::new(Mutex::new(HashMap::new())))
     }
-    fn from_bytes(mut bytes: Vec<u8>) -> Self {
-        let data_size = bytes.len();
-        let byte_size = 8;
-        let rem = data_size % byte_size;
-        for _ in 0..(byte_size - rem) {
-            bytes.push(0);
+    pub fn join(m1: Self, m2: Self) -> Self {
+        let mut map1 = match m1 {
+            Metadata::Map(map) => map.lock().unwrap().clone(),
+            _ => HashMap::new(),
+        };
+        let map2 = match m2 {
+            Metadata::Map(map) => map.lock().unwrap().clone(),
+            _ => HashMap::new(),
+        };
+        map1.extend(map2);
+        Metadata::Map(Arc::new(Mutex::new(map1)))
+    }
+    pub fn from_ser(s: impl Serialize) -> Result<Self> {
+        from_value(to_value(s).context("Serialize error")?).context("Deserialize error")
+    }
+
+    pub fn as_str(&self) -> Option<Arc<Mutex<String>>> {
+        if let Metadata::String(s) = self {
+            Some(s.clone())
+        } else {
+            None
         }
-        let data_size = Metadata::Number(Number::from(data_size));
-        let mut array = vec![data_size];
-        let mut data;
-        let mut remain = bytes.as_slice();
-        let len = remain.len() / 8;
-        for _ in 0..len {
-            (data, remain) = remain.split_at(byte_size);
-            let num = u64::from_be_bytes(data.try_into().unwrap());
-            let num = Number::from(num);
-            let val = Metadata::Number(num);
-            array.push(val);
+    }
+    pub fn get(&self, k: impl AsRef<str>) -> Option<Metadata> {
+        if let Metadata::Map(map) = self {
+            map.lock().unwrap().get(k.as_ref()).cloned()
+        } else {
+            None
         }
-        let res = Metadata::Array(array);
-        res
     }
 }
-
-/// Convert any [`Serialize`] object into
-pub trait FromSerializable {
-    fn from_serializable(data: impl Serialize) -> Result<Self>
-    where
-        Self: Sized;
-}
-impl FromSerializable for Metadata {
-    /// Convert any serializable value into [`Metadata`]
-    fn from_serializable(data: impl Serialize) -> Result<Self> {
-        to_value(&data).context("Serialize error")
+impl From<String> for Metadata {
+    fn from(value: String) -> Self {
+        Metadata::String(Arc::new(Mutex::new(value)))
     }
 }
-
-pub fn new_object() -> Metadata {
-    json!({})
-}
-
-pub fn join_metadata(m1: Metadata, m2: Metadata) -> Metadata {
-    let mut m1 = if m1.is_object() { m1 } else { new_object() };
-    let m2 = if m2.is_object() { m2 } else { new_object() };
-    m1.as_object_mut()
-        .unwrap()
-        .extend(m2.as_object().unwrap().clone());
-    m1
+impl From<&str> for Metadata {
+    fn from(value: &str) -> Self {
+        Metadata::String(Arc::new(Mutex::new(value.to_owned())))
+    }
 }

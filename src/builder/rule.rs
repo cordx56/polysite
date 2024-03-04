@@ -4,7 +4,7 @@ use anyhow::{anyhow, Context as _, Error};
 use glob::glob;
 use log::info;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::task::JoinSet;
 
 #[derive(Debug)]
@@ -144,17 +144,20 @@ impl Rule {
             let compiling = Compiling::new(snapshot_stage);
             let mut new_ctx = ctx.clone();
             new_ctx.set_compiling(Some(compiling));
-            new_ctx.insert_compiling_metadata(RULE_META, self.get_name())?;
+            new_ctx.insert_compiling_metadata(RULE_META, Metadata::from(self.get_name()));
             new_ctx.insert_compiling_metadata(
                 SOURCE_FILE_META,
-                source.to_string_lossy().to_string(),
-            )?;
+                Metadata::from(source.to_string_lossy().to_string()),
+            );
             new_ctx.insert_compiling_metadata(
                 TARGET_FILE_META,
-                target.to_string_lossy().to_string(),
-            )?;
-            new_ctx.insert_compiling_metadata(PATH_META, path.to_string_lossy().to_string())?;
-            new_ctx.insert_compiling_metadata(VERSION_META, self.version.get())?;
+                Metadata::from(target.to_string_lossy().to_string()),
+            );
+            new_ctx.insert_compiling_metadata(
+                PATH_META,
+                Metadata::from(path.to_string_lossy().to_string()),
+            );
+            new_ctx.insert_compiling_metadata(VERSION_META, Metadata::from(self.version.get()));
             tasks.push(compiler.compile(new_ctx));
         }
         ctx.register_snapshot_manager(self.get_name(), snapshot_manager);
@@ -180,8 +183,8 @@ impl Rule {
             );
             results.push(compiling_metadata);
         }
-        let metadata = Metadata::Array(results);
-        ctx.insert_global_metadata(self.get_name(), metadata)?;
+        let metadata = Metadata::Array(Arc::new(Mutex::new(results)));
+        ctx.insert_global_metadata(self.get_name(), metadata);
         Ok(ctx)
     }
 }
