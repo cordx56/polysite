@@ -14,6 +14,7 @@ pub const BODY_META: &str = "_body";
 /// Use [`serde_json::Value`] as metadata because the [`serde::Serialize`] trait is not object
 /// safe.
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(untagged)]
 pub enum Metadata {
     Null,
     Bool(bool),
