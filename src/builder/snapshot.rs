@@ -1,4 +1,5 @@
-use std::sync::{Arc, Mutex};
+use super::metadata::Metadata;
+use std::sync::{Arc, RwLock};
 use tokio::{spawn, sync::Notify};
 
 /// SnapshotStage manager
@@ -9,58 +10,56 @@ use tokio::{spawn, sync::Notify};
 #[derive(Clone)]
 pub struct SnapshotStage {
     notify: Arc<Notify>,
-    stage: Arc<Mutex<usize>>,
+    metas: Arc<RwLock<Vec<Metadata>>>,
 }
 impl SnapshotStage {
     pub fn new() -> Self {
         Self {
             notify: Arc::new(Notify::new()),
-            stage: Arc::new(Mutex::new(0)),
+            metas: Arc::new(RwLock::new(Vec::new())),
         }
     }
     /// Get current, waiting stage
     pub fn current_stage(&self) -> usize {
-        *self.stage.lock().unwrap()
+        self.metas.read().unwrap().len()
     }
-    /// Wait until notified and return next stage count
-    pub async fn notified(&self) -> usize {
-        self.notify.notified().await;
-        self.current_stage()
+    /// Clone self [`Notify`]
+    pub fn get_notify(&self) -> Arc<Notify> {
+        self.notify.clone()
     }
     /// Notifies all waiters
-    pub fn notify_waiters(&self) {
-        *self.stage.lock().unwrap() += 1;
+    pub fn push(&self, meta: Metadata) {
+        self.metas.write().unwrap().push(meta);
         self.notify.notify_waiters();
+    }
+    pub fn metas(&self) -> Arc<RwLock<Vec<Metadata>>> {
+        self.metas.clone()
     }
 }
 
 /// SnapshotManager
 /// manages 1 rule snapshots
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) struct SnapshotManager {
-    current_stages: Arc<Mutex<Vec<usize>>>,
+    stages: Arc<RwLock<Vec<SnapshotStage>>>,
     notify: Arc<Notify>,
 }
 impl SnapshotManager {
     pub fn new() -> Self {
         Self {
-            current_stages: Arc::new(Mutex::new(Vec::new())),
+            stages: Arc::new(RwLock::new(Vec::new())),
             notify: Arc::new(Notify::new()),
         }
     }
     /// Register new [`SnapshotStage`]
     pub fn push(&self, stage: SnapshotStage) {
-        let current_stage = stage.current_stage();
-        let current_stages = self.current_stages.clone();
-        let mut current_stages_locked = self.current_stages.lock().unwrap();
-        let index = current_stages_locked.len();
-        current_stages_locked.push(current_stage);
+        let stage_notify = stage.get_notify();
+        self.stages.write().unwrap().push(stage);
         let notify = self.notify.clone();
         spawn(async move {
             loop {
-                let next = stage.notified().await;
-                *current_stages.lock().unwrap().get_mut(index).unwrap() = next;
-                notify.notify_one();
+                stage_notify.notified().await;
+                notify.notify_waiters();
             }
         });
     }
@@ -71,17 +70,41 @@ impl SnapshotManager {
     pub async fn wait_until(&self, stage: usize) {
         loop {
             if self
-                .current_stages
-                .lock()
+                .stages
+                .read()
                 .unwrap()
                 .iter()
-                .filter(|s| **s < stage)
+                .filter(|s| s.metas().read().unwrap().len() < stage)
                 .next()
-                .is_some()
+                .is_none()
             {
                 return;
             }
             self.notify.notified().await;
         }
+    }
+    pub fn current_stage(&self) -> Option<usize> {
+        self.stages
+            .read()
+            .unwrap()
+            .iter()
+            .map(|s| s.current_stage())
+            .min()
+    }
+    /// Get [`Metadata`]
+    pub fn metadata(&self) -> Option<Vec<Metadata>> {
+        if let Some(current) = self.current_stage() {
+            if 0 < current {
+                let res = self
+                    .stages
+                    .read()
+                    .unwrap()
+                    .iter()
+                    .map(|s| s.metas().read().unwrap().get(current - 1).unwrap().clone())
+                    .collect();
+                return Some(res);
+            }
+        }
+        None
     }
 }

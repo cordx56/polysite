@@ -4,7 +4,7 @@ use anyhow::{anyhow, Context as _, Result};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 /// [`Version`] represents compilation file version.
 /// If the same version of a source file path is registered for compilation, that file will be
@@ -49,9 +49,9 @@ impl Compiling {
 /// This also provides some helper methods.
 pub struct Context {
     metadata: Metadata,
-    versions: Arc<Mutex<HashMap<Version, HashMap<PathBuf, Metadata>>>>,
+    versions: Arc<RwLock<HashMap<Version, HashMap<PathBuf, Metadata>>>>,
     compiling: Option<Compiling>,
-    snapshot_managers: Arc<Mutex<HashMap<String, SnapshotManager>>>,
+    snapshot_managers: Arc<RwLock<HashMap<String, SnapshotManager>>>,
     config: Config,
 }
 
@@ -59,9 +59,9 @@ impl Context {
     pub fn new(config: Config) -> Self {
         Self {
             metadata: Metadata::new(),
-            versions: Arc::new(Mutex::new(HashMap::new())),
+            versions: Arc::new(RwLock::new(HashMap::new())),
             compiling: None,
-            snapshot_managers: Arc::new(Mutex::new(HashMap::new())),
+            snapshot_managers: Arc::new(RwLock::new(HashMap::new())),
             config,
         }
     }
@@ -72,6 +72,16 @@ impl Context {
         if let Some(c) = &self.compiling {
             global = Metadata::join(global, c.metadata.clone());
         }
+        let mut map = HashMap::new();
+        for (rule, snap) in self.snapshot_managers.read().unwrap().iter() {
+            if let Some(meta) = snap.metadata() {
+                map.insert(
+                    rule.to_owned(),
+                    Metadata::Array(Arc::new(RwLock::new(meta))),
+                );
+            }
+        }
+        global = Metadata::join(global, Metadata::Map(Arc::new(RwLock::new(map))));
         global
     }
     /// Get compiling [`Metadata`]
@@ -85,7 +95,7 @@ impl Context {
     /// Insert [`Metadata`] value to global metadata
     pub fn insert_global_metadata(&self, name: impl AsRef<str>, metadata: Metadata) {
         if let Metadata::Map(map) = &self.metadata {
-            map.lock()
+            map.write()
                 .unwrap()
                 .insert(name.as_ref().to_owned(), metadata);
         }
@@ -94,7 +104,7 @@ impl Context {
     pub fn insert_compiling_metadata(&mut self, name: impl AsRef<str>, metadata: Metadata) {
         if let Some(compiling) = &self.compiling {
             if let Metadata::Map(map) = &compiling.metadata {
-                map.lock()
+                map.write()
                     .unwrap()
                     .insert(name.as_ref().to_owned(), metadata);
             }
@@ -109,7 +119,7 @@ impl Context {
             .ok_or(anyhow!("Rule metadata not set!"))?
             .as_str()
             .ok_or(anyhow!("Invalid value"))?;
-        let version = version.lock().unwrap();
+        let version = version.read().unwrap();
         let version = version.as_str();
         Ok(version.into())
     }
@@ -120,7 +130,7 @@ impl Context {
         path: &PathBuf,
     ) -> Option<Metadata> {
         let version = version.into();
-        let versions = self.versions.lock().unwrap();
+        let versions = self.versions.read().unwrap();
         if let Some(v) = versions.get(&version) {
             v.get(path).cloned()
         } else {
@@ -135,7 +145,7 @@ impl Context {
         metadata: Metadata,
     ) -> Result<()> {
         let version = version.into();
-        let mut versions = self.versions.lock().unwrap();
+        let mut versions = self.versions.write().unwrap();
         let version = match versions.get_mut(&version) {
             Some(v) => v,
             None => {
@@ -154,7 +164,7 @@ impl Context {
     /// Register [`SnapshotManager`]
     pub(crate) fn register_snapshot_manager(&self, s: impl AsRef<str>, m: SnapshotManager) {
         self.snapshot_managers
-            .lock()
+            .write()
             .unwrap()
             .insert(s.as_ref().to_owned(), m);
     }
@@ -164,7 +174,7 @@ impl Context {
         let name = name.as_ref();
         let manager = {
             self.snapshot_managers
-                .lock()
+                .read()
                 .unwrap()
                 .get(name)
                 .ok_or(anyhow!("Rule {} not found", name))?
@@ -175,23 +185,12 @@ impl Context {
     }
     /// Save currently compiling [`Metadata`] as snapshot
     pub fn save_snapshot(&self) -> Result<()> {
-        let rule = self.rule()?;
         let compiling_metadata = self.compiling_metadata()?.clone();
-        if let Some(Metadata::Array(a)) = self.metadata.get(&rule) {
-            a.lock().unwrap().push(compiling_metadata);
-        } else {
-            if let Metadata::Map(map) = &self.metadata {
-                map.lock().unwrap().insert(
-                    rule,
-                    Metadata::Array(Arc::new(Mutex::new(vec![compiling_metadata]))),
-                );
-            }
-        }
         self.compiling
             .as_ref()
-            .unwrap()
+            .context("Not compiling")?
             .snapshot_stage
-            .notify_waiters();
+            .push(compiling_metadata);
         Ok(())
     }
 
@@ -204,7 +203,7 @@ impl Context {
         let rule = binding
             .as_str()
             .ok_or(anyhow!("Invalid value"))?
-            .lock()
+            .read()
             .unwrap()
             .clone();
         Ok(rule)
@@ -218,7 +217,7 @@ impl Context {
             .ok_or(anyhow!("Source file metadata not set!"))?
             .as_str()
             .ok_or(anyhow!("Invalid value"))?
-            .lock()
+            .read()
             .unwrap()
             .clone();
         Ok(PathBuf::from(source))
@@ -231,7 +230,7 @@ impl Context {
             .ok_or(anyhow!("Target file metadata not set!"))?
             .as_str()
             .ok_or(anyhow!("Invalid value"))?
-            .lock()
+            .read()
             .unwrap()
             .clone();
         Ok(PathBuf::from(target))
@@ -244,7 +243,7 @@ impl Context {
             .ok_or(anyhow!("Path metadata not set!"))?
             .as_str()
             .ok_or(anyhow!("Invalid value"))?
-            .lock()
+            .read()
             .unwrap()
             .clone();
         Ok(PathBuf::from(path))
@@ -276,9 +275,9 @@ impl Context {
     pub fn get_source_data(&self) -> Result<Metadata> {
         let body = self.get_source_body()?;
         if let Ok(s) = String::from_utf8(body.clone()) {
-            Ok(Metadata::String(Arc::new(Mutex::new(s))))
+            Ok(Metadata::String(Arc::new(RwLock::new(s))))
         } else {
-            Ok(Metadata::Bytes(Arc::new(Mutex::new(body))))
+            Ok(Metadata::Bytes(Arc::new(RwLock::new(body))))
         }
     }
     /// Create target file's parent directory

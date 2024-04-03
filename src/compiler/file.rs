@@ -40,11 +40,11 @@ impl Compiler for FileWriter {
             let body = ctx.body()?;
             if let Some(s) = body.as_str() {
                 target
-                    .write(s.lock().unwrap().as_bytes())
+                    .write(s.read().unwrap().as_bytes())
                     .with_context(|| format!("Failed to write file {}", target_display))?;
             } else if let Metadata::Bytes(bytes) = body {
                 target
-                    .write(bytes.lock().unwrap().as_slice())
+                    .write(bytes.read().unwrap().as_slice())
                     .with_context(|| format!("Failed to write file {}", target_display))?;
             } else {
                 return Err(anyhow!("Invalid body format"));

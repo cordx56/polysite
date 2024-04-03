@@ -33,6 +33,11 @@ pub trait Compiler: Send + Sync {
         Arc::new(self)
     }
 }
+impl<C: Compiler> Compiler for Arc<C> {
+    fn compile(&self, ctx: Context) -> CompilerReturn {
+        C::compile(&self, ctx)
+    }
+}
 
 /// [`compile!`] macro may used to make compile function which returns boxed Future.
 /// This is provided for ease of creating boxed Future.

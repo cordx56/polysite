@@ -33,7 +33,7 @@ impl Compiler for MarkdownRenderer {
             let mut ctx = ctx;
             let body = ctx.body()?;
             let body = body.as_str().ok_or(anyhow!("Body is not string"))?;
-            let body = body.lock().unwrap();
+            let body = body.read().unwrap();
             let fm = fronma::parser::parse::<Metadata>(&body)
                 .map_err(|e| anyhow!("Front matter parse error: {:?}", e))?;
             let file_metadata = fm.headers;
@@ -41,7 +41,7 @@ impl Compiler for MarkdownRenderer {
             let mut html = String::new();
             push_html(&mut html, parser);
             if let Metadata::Map(map) = file_metadata {
-                for (k, v) in map.lock().unwrap().clone().into_iter() {
+                for (k, v) in map.read().unwrap().clone().into_iter() {
                     ctx.insert_compiling_metadata(k, v);
                 }
             }

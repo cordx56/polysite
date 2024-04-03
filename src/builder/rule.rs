@@ -4,7 +4,7 @@ use anyhow::{anyhow, Context as _, Error};
 use glob::glob;
 use log::info;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use tokio::task::JoinSet;
 
 #[derive(Debug)]
@@ -54,9 +54,9 @@ impl Rule {
 
     /// Set compiler
     ///
-    /// A [`Arc`] pointer of [`Compiler`] passed to this method will be called in compilation task.
-    pub fn set_compiler(mut self, compiler: Arc<dyn Compiler>) -> Self {
-        self.compiler = Some(compiler);
+    /// An [`Arc`] pointer of [`Compiler`] passed to this method will be called in compilation task.
+    pub fn set_compiler(mut self, compiler: impl Compiler + 'static) -> Self {
+        self.compiler = Some(Arc::new(compiler));
         self
     }
 
@@ -183,7 +183,7 @@ impl Rule {
             );
             results.push(compiling_metadata);
         }
-        let metadata = Metadata::Array(Arc::new(Mutex::new(results)));
+        let metadata = Metadata::Array(Arc::new(RwLock::new(results)));
         ctx.insert_global_metadata(self.get_name(), metadata);
         Ok(ctx)
     }
