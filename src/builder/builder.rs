@@ -1,8 +1,8 @@
 use crate::*;
-use anyhow::{Context as _, Result};
 use log::info;
 use std::fs::remove_dir_all;
 use tokio::task::JoinSet;
+use tracing_error::SpanTrace;
 
 /// A site builder to use build one site
 ///
@@ -47,11 +47,6 @@ impl Builder {
         }
     }
 
-    pub fn insert_metadata(self, key: impl AsRef<str>, data: Metadata) -> Self {
-        self.ctx.insert_global_metadata(key.as_ref(), data);
-        self
-    }
-
     /// Add build step
     ///
     /// This method receives rules as a parameter and push as build step
@@ -64,23 +59,26 @@ impl Builder {
     /// Run build
     ///
     /// Run all registered build steps
-    pub async fn build(self) -> Result<()> {
+    #[tracing::instrument(skip(self))]
+    pub async fn build(mut self) -> Result<(), Error> {
         let conf = self.ctx.config();
         let target_dir = conf.target_dir();
         if conf.target_clean() && target_dir.is_dir() {
-            remove_dir_all(&target_dir).context("Target directory compiling error")?;
+            remove_dir_all(&target_dir).map_err(|io_error| Error::FileIo {
+                trace: SpanTrace::capture(),
+                io_error,
+            })?;
             info!("Target directory ({}) cleaned", target_dir.display());
         }
         for step in self.steps.into_iter() {
             let mut set = JoinSet::new();
-            for mut rule in step.into_iter() {
+            for rule in step.into_iter() {
                 let ctx = self.ctx.clone();
-                rule.eval_conditions(&ctx)?;
-                set.spawn(async move { (rule.get_name(), rule.compile(ctx).await) });
+                set.spawn(rule.compile(ctx));
             }
-            while let Some(join_res) = set.join_next().await {
-                let (name, res) = join_res.context("Join error")?;
-                let _ctx = res.with_context(|| format!("Rule {}: compile error", name))?;
+            while let Some(res) = set.join_next().await {
+                let ctx = res.unwrap()?;
+                self.ctx.metadata_mut().merge(ctx.metadata().clone());
             }
         }
         Ok(())

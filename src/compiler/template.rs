@@ -1,17 +1,18 @@
 use crate::{builder::metadata::BODY_META, *};
-use anyhow::{Context as _, Result};
+use serde_json::Value;
 use std::sync::Arc;
 use tera::Tera;
 
 /// Template engine (uses [`tera`])
+#[derive(Clone)]
 pub struct TemplateEngine {
     tera: Tera,
 }
 impl TemplateEngine {
     /// Load templates and create
     /// template engine instance
-    pub fn new(template_dir: impl AsRef<str>) -> Result<Self> {
-        let tera = tera::Tera::new(template_dir.as_ref()).context("Template error")?;
+    pub fn new(template_dir: impl AsRef<str>) -> Result<Self, Error> {
+        let tera = tera::Tera::new(template_dir.as_ref()).map_err(|err| Error::user_error(err))?;
         Ok(Self { tera })
     }
 
@@ -21,39 +22,43 @@ impl TemplateEngine {
     }
 
     /// Render HTML using specified template and metadata
-    pub fn render(&self, template: impl AsRef<str>, metadata: &Metadata) -> Result<String> {
-        let tera_ctx =
-            tera::Context::from_serialize(metadata).context("Context serialization error")?;
-        let out = self
-            .tera
+    pub async fn render(
+        &self,
+        template: impl AsRef<str>,
+        metadata: &Metadata,
+    ) -> Result<String, Error> {
+        let tera_ctx = tera::Context::from_serialize(metadata.read_lock().await)
+            .map_err(|err| Error::user_error(err))?;
+        self.tera
             .render(template.as_ref(), &tera_ctx)
-            .context("Tera rendering error")?;
-        Ok(out)
+            .map_err(|err| Error::user_error(err))
     }
 }
 
 /// Template renderer renders HTML using specified template and
 /// compiling metadata.
+#[derive(Clone)]
 pub struct TemplateRenderer {
-    engine: Arc<TemplateEngine>,
+    engine: TemplateEngine,
     template: String,
 }
 impl TemplateRenderer {
-    pub fn new(engine: Arc<TemplateEngine>, template: impl AsRef<str>) -> Self {
+    pub fn new(engine: TemplateEngine, template: impl AsRef<str>) -> Self {
         let template = template.as_ref().to_owned();
         Self { engine, template }
     }
 }
 impl Compiler for TemplateRenderer {
-    fn compile(&self, ctx: Context) -> CompilerReturn {
+    #[tracing::instrument(skip(self, ctx))]
+    fn next_step(&mut self, mut ctx: Context) -> CompilerReturn {
         let engine = self.engine.clone();
         let template = self.template.clone();
-        Box::new(compile!({
-            let mut ctx = ctx;
+        compile!({
             let metadata = ctx.metadata();
-            let body = engine.render(&template, &metadata)?;
-            ctx.insert_compiling_metadata(BODY_META, Metadata::from(body));
-            Ok(ctx)
-        }))
+            let body = engine.render(&template, &metadata).await?;
+            ctx.metadata_mut()
+                .insert_local(BODY_META.to_owned(), Value::String(body));
+            Ok(CompileStep::Completed(ctx))
+        })
     }
 }

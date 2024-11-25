@@ -1,10 +1,8 @@
-use super::{metadata::*, snapshot::*};
+use super::metadata::*;
 use crate::*;
-use anyhow::{anyhow, Context as _, Result};
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use tracing_error::SpanTrace;
 
 /// [`Version`] represents compilation file version.
 /// If the same version of a source file path is registered for compilation, that file will be
@@ -12,8 +10,8 @@ use std::sync::{Arc, RwLock};
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Version(String);
 impl Version {
-    pub fn get(&self) -> String {
-        self.0.clone()
+    pub fn get(&self) -> &str {
+        &self.0
     }
 }
 impl Default for Version {
@@ -28,234 +26,77 @@ impl<S: AsRef<str>> From<S> for Version {
 }
 
 #[derive(Clone)]
-pub struct Compiling {
-    metadata: Metadata,
-    snapshot_stage: SnapshotStage,
-}
-impl Compiling {
-    pub fn new(snapshot_stage: SnapshotStage) -> Self {
-        let metadata = Metadata::new();
-        Self {
-            metadata,
-            snapshot_stage,
-        }
-    }
-}
-
-#[derive(Clone)]
 /// Compiling context
 ///
 /// This holds global, compiling (local) and versions' [`Metadata`], snapshot manager.
 /// This also provides some helper methods.
 pub struct Context {
-    metadata: Metadata,
-    versions: Arc<RwLock<HashMap<Version, HashMap<PathBuf, Metadata>>>>,
-    compiling: Option<Compiling>,
-    snapshot_managers: Arc<RwLock<HashMap<String, SnapshotManager>>>,
+    meta: Metadata,
     config: Config,
 }
 
 impl Context {
     pub fn new(config: Config) -> Self {
         Self {
-            metadata: Metadata::new(),
-            versions: Arc::new(RwLock::new(HashMap::new())),
-            compiling: None,
-            snapshot_managers: Arc::new(RwLock::new(HashMap::new())),
+            meta: Metadata::new(),
             config,
         }
     }
 
     /// Get [`Metadata`] that merges global and compiling metadata
-    pub fn metadata(&self) -> Metadata {
-        let mut global = self.metadata.clone();
-        if let Some(c) = &self.compiling {
-            global = Metadata::join(global, c.metadata.clone());
-        }
-        let mut map = HashMap::new();
-        for (rule, snap) in self.snapshot_managers.read().unwrap().iter() {
-            if let Some(meta) = snap.metadata() {
-                map.insert(
-                    rule.to_owned(),
-                    Metadata::Array(Arc::new(RwLock::new(meta))),
-                );
-            }
-        }
-        global = Metadata::join(global, Metadata::Map(Arc::new(RwLock::new(map))));
-        global
+    pub fn metadata(&self) -> &Metadata {
+        &self.meta
     }
-    /// Get compiling [`Metadata`]
-    pub fn compiling_metadata(&self) -> Result<&Metadata> {
-        Ok(&self
-            .compiling
-            .as_ref()
-            .ok_or(anyhow!("Not compiling"))?
-            .metadata)
-    }
-    /// Insert [`Metadata`] value to global metadata
-    pub fn insert_global_metadata(&self, name: impl AsRef<str>, metadata: Metadata) {
-        if let Metadata::Map(map) = &self.metadata {
-            map.write()
-                .unwrap()
-                .insert(name.as_ref().to_owned(), metadata);
-        }
-    }
-    /// Insert [`Metadata`] value to compiling metadata
-    pub fn insert_compiling_metadata(&mut self, name: impl AsRef<str>, metadata: Metadata) {
-        if let Some(compiling) = &self.compiling {
-            if let Metadata::Map(map) = &compiling.metadata {
-                map.write()
-                    .unwrap()
-                    .insert(name.as_ref().to_owned(), metadata);
-            }
-        }
+    /// Get [`Metadata`] that merges global and compiling metadata
+    pub fn metadata_mut(&mut self) -> &mut Metadata {
+        &mut self.meta
     }
 
     /// Get currently compiling [`Version`]
-    pub fn version(&self) -> Result<Version> {
-        let compiling = self.compiling_metadata()?;
-        let version = compiling
+    pub async fn version(&self) -> Option<Version> {
+        self.meta
             .get(VERSION_META)
-            .ok_or(anyhow!("Rule metadata not set!"))?
-            .as_str()
-            .ok_or(anyhow!("Invalid value"))?;
-        let version = version.read().unwrap();
-        let version = version.as_str();
-        Ok(version.into())
-    }
-    /// Get specified [`Version`] and source's metadata'
-    pub fn get_version_metadata(
-        &self,
-        version: impl Into<Version>,
-        path: &PathBuf,
-    ) -> Option<Metadata> {
-        let version = version.into();
-        let versions = self.versions.read().unwrap();
-        if let Some(v) = versions.get(&version) {
-            v.get(path).cloned()
-        } else {
-            None
-        }
-    }
-    /// Insert specified [`Version`] and source's metadata
-    pub fn insert_version(
-        &self,
-        version: impl Into<Version>,
-        path: PathBuf,
-        metadata: Metadata,
-    ) -> Result<()> {
-        let version = version.into();
-        let mut versions = self.versions.write().unwrap();
-        let version = match versions.get_mut(&version) {
-            Some(v) => v,
-            None => {
-                versions.insert(version.clone(), HashMap::new());
-                versions.get_mut(&version).unwrap()
-            }
-        };
-        version.insert(path, metadata);
-        Ok(())
-    }
-
-    pub(crate) fn set_compiling(&mut self, compiling: Option<Compiling>) {
-        self.compiling = compiling;
-    }
-
-    /// Register [`SnapshotManager`]
-    pub(crate) fn register_snapshot_manager(&self, s: impl AsRef<str>, m: SnapshotManager) {
-        self.snapshot_managers
-            .write()
-            .unwrap()
-            .insert(s.as_ref().to_owned(), m);
-    }
-    /// Wait snapshot until specified stage.
-    /// In most cases, you would like to wait until stage 1, that means "first snapshot was taken".
-    pub async fn wait_snapshot_until(&self, name: impl AsRef<str>, stage: usize) -> Result<()> {
-        let name = name.as_ref();
-        let manager = {
-            self.snapshot_managers
-                .read()
-                .unwrap()
-                .get(name)
-                .ok_or(anyhow!("Rule {} not found", name))?
-                .clone()
-        };
-        manager.wait_until(stage).await;
-        Ok(())
-    }
-    /// Save currently compiling [`Metadata`] as snapshot
-    pub fn save_snapshot(&self) -> Result<()> {
-        let compiling_metadata = self.compiling_metadata()?.clone();
-        self.compiling
-            .as_ref()
-            .context("Not compiling")?
-            .snapshot_stage
-            .push(compiling_metadata);
-        Ok(())
+            .await
+            .map(|v| v.as_str().map(|v| v.into()))
+            .flatten()
     }
 
     /// Get currently compiling rule name
-    pub fn rule(&self) -> Result<String> {
-        let compiling = self.compiling_metadata()?;
-        let binding = compiling
+    pub async fn rule(&self) -> Option<String> {
+        self.meta
             .get(RULE_META)
-            .ok_or(anyhow!("Rule metadata not set!"))?;
-        let rule = binding
-            .as_str()
-            .ok_or(anyhow!("Invalid value"))?
-            .read()
-            .unwrap()
-            .clone();
-        Ok(rule)
+            .await
+            .map(|v| v.as_str().map(|v| v.to_owned()))
+            .flatten()
     }
 
     /// Get currently compiling source file path
-    pub fn source(&self) -> Result<PathBuf> {
-        let compiling = self.compiling_metadata()?;
-        let source = compiling
+    pub async fn source(&self) -> Option<PathBuf> {
+        self.meta
             .get(SOURCE_FILE_META)
-            .ok_or(anyhow!("Source file metadata not set!"))?
-            .as_str()
-            .ok_or(anyhow!("Invalid value"))?
-            .read()
-            .unwrap()
-            .clone();
-        Ok(PathBuf::from(source))
+            .await
+            .map(|v| v.as_str().map(|v| PathBuf::from(v)))
+            .flatten()
     }
     /// Get currently compiling target file path
-    pub fn target(&self) -> Result<PathBuf> {
-        let compiling = self.compiling_metadata()?;
-        let target = compiling
+    pub async fn target(&self) -> Option<PathBuf> {
+        self.meta
             .get(TARGET_FILE_META)
-            .ok_or(anyhow!("Target file metadata not set!"))?
-            .as_str()
-            .ok_or(anyhow!("Invalid value"))?
-            .read()
-            .unwrap()
-            .clone();
-        Ok(PathBuf::from(target))
+            .await
+            .map(|v| v.as_str().map(|v| PathBuf::from(v)))
+            .flatten()
     }
     /// Get currently compiling URL path
-    pub fn path(&self) -> Result<PathBuf> {
-        let compiling = self.compiling_metadata()?;
-        let path = compiling
+    pub async fn path(&self) -> Option<PathBuf> {
+        self.meta
             .get(PATH_META)
-            .ok_or(anyhow!("Path metadata not set!"))?
-            .as_str()
-            .ok_or(anyhow!("Invalid value"))?
-            .read()
-            .unwrap()
-            .clone();
-        Ok(PathBuf::from(path))
+            .await
+            .map(|v| v.as_str().map(|v| PathBuf::from(v)))
+            .flatten()
     }
-    /// Get currently compiling body [`Metadata`], which can be [`Vec<u8>`] or [`String`].
-    pub fn body(&self) -> Result<Metadata> {
-        let compiling = self.compiling_metadata()?;
-        let body = compiling
-            .get(BODY_META)
-            .ok_or(anyhow!("Target file metadata not set!"))?
-            .clone();
-        Ok(body)
+    /// Get currently compiling body [`Value`], which can be [`Vec<u8>`] or [`String`].
+    pub async fn body(&self) -> Option<Value> {
+        self.meta.get(BODY_META).await
     }
     /// Get [`Config`]
     pub fn config(&self) -> Config {
@@ -263,34 +104,42 @@ impl Context {
     }
 
     /// Get source file body as bytes
-    pub fn get_source_body(&self) -> Result<Vec<u8>> {
-        let file = self.source()?;
-        fs::read(&file).context("File read error")
+    pub async fn source_body(&self) -> Result<Vec<u8>, Error> {
+        let file = self.source().await.ok_or_else(|| Error::InvalidMetadata {
+            trace: SpanTrace::capture(),
+        })?;
+        fs::read(&file).map_err(|io_error| Error::FileIo {
+            trace: SpanTrace::capture(),
+            io_error,
+        })
     }
     /// Get source file string
-    pub fn get_source_string(&self) -> Result<String> {
-        String::from_utf8(self.get_source_body()?).context("String encode error")
-    }
-    /// Get source file data as [`Metadata`]
-    pub fn get_source_data(&self) -> Result<Metadata> {
-        let body = self.get_source_body()?;
-        if let Ok(s) = String::from_utf8(body.clone()) {
-            Ok(Metadata::String(Arc::new(RwLock::new(s))))
-        } else {
-            Ok(Metadata::Bytes(Arc::new(RwLock::new(body))))
-        }
+    pub async fn source_string(&self) -> Result<String, Error> {
+        String::from_utf8(self.source_body().await?).map_err(|_| Error::InvalidMetadata {
+            trace: SpanTrace::capture(),
+        })
     }
     /// Create target file's parent directory
-    pub fn create_target_parent_dir(&self) -> Result<()> {
-        let target = self.target()?;
-        let dir = target.parent().unwrap();
-        fs::create_dir_all(&dir).context("Directory creation error")
+    pub async fn create_target_parent_dir(&self) -> Result<PathBuf, Error> {
+        if let Some(target) = self.target().await {
+            let dir = target.parent().unwrap();
+            fs::create_dir_all(dir).map_err(|io_error| Error::FileIo {
+                trace: SpanTrace::capture(),
+                io_error,
+            })?;
+            Ok(target)
+        } else {
+            Err(Error::InvalidMetadata {
+                trace: SpanTrace::capture(),
+            })
+        }
     }
     /// Open target file to write
-    pub fn open_target(&self) -> Result<fs::File> {
-        self.create_target_parent_dir()?;
-        let target = self.target()?;
-        let file = fs::File::create(&target).context("Target file open error")?;
-        Ok(file)
+    pub async fn open_target(&self) -> Result<fs::File, Error> {
+        let target = self.create_target_parent_dir().await?;
+        fs::File::create(&target).map_err(|io_error| Error::FileIo {
+            trace: SpanTrace::capture(),
+            io_error,
+        })
     }
 }

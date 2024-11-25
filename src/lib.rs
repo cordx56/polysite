@@ -92,23 +92,27 @@
 pub mod builder;
 pub mod compiler;
 pub mod config;
+pub mod error;
 
 #[doc(inline)]
 pub use builder::{
     builder::Builder,
     context::{Context, Version},
     metadata::Metadata,
-    rule::{Conditions, Rule},
+    rule::Rule,
 };
 #[doc(inline)]
-pub use compiler::{CompileResult, Compiler, CompilerReturn};
+pub use compiler::{CompileResult, CompileStep, Compiler, CompilerReturn};
 #[doc(inline)]
 pub use config::Config;
+#[doc(inline)]
+pub use error::Error;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[derive(Clone)]
     struct PrintCompiler;
     impl PrintCompiler {
         fn new() -> Self {
@@ -116,13 +120,13 @@ mod tests {
         }
     }
     impl Compiler for PrintCompiler {
-        fn compile(&self, ctx: Context) -> CompilerReturn {
-            Box::new(compile!({
-                let src = ctx.source()?;
-                let tgt = ctx.target()?;
+        fn next_step(&mut self, ctx: Context) -> CompilerReturn {
+            compile!({
+                let src = ctx.source().await.unwrap();
+                let tgt = ctx.target().await.unwrap();
                 println!("{} -> {}", src.display(), tgt.display());
-                Ok(ctx)
-            }))
+                Ok(CompileStep::Completed(ctx))
+            })
         }
     }
 
@@ -132,31 +136,29 @@ mod tests {
         let builder = Builder::new(config);
         let result = builder
             // Add one rule as build step
-            .add_step([Rule::new("hello")
-                .set_globs(["builder/**/*.rs"])
-                .set_compiler(PrintCompiler::new().get())])
+            .add_step([Rule::new("hello", PrintCompiler::new()).set_globs(["builder/**/*.rs"])])
             // Rules in same step will build concurrently, but
             // the file matching is evaluated in order
             .add_step([
-                Rule::new("compile").set_globs(["compiler/*"]).set_compiler(
+                Rule::new(
+                    "compile",
                     pipe!(
                         compiler::path::SetExtension::new("txt"),
                         PrintCompiler::new()
-                    )
-                    .get(),
-                ),
-                Rule::new("compile").set_globs(["**/*"]).set_compiler(
+                    ),
+                )
+                .set_globs(["compiler/*"]),
+                Rule::new(
+                    "compile",
                     pipe!(
                         compiler::path::SetExtension::new("txt"),
-                        compiler::utils::GenericCompiler::from(|ctx| {
-                            compile!({
-                                println!("{}", ctx.source()?.display());
-                                Ok(ctx)
-                            })
+                        |ctx: Context| compile!({
+                            println!("{}", ctx.source().await.unwrap().display());
+                            Ok(CompileStep::Completed(ctx))
                         })
-                    )
-                    .get(),
-                ),
+                    ),
+                )
+                .set_globs(["**/*"]),
             ])
             .build()
             .await;

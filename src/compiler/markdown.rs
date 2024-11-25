@@ -1,19 +1,19 @@
 use crate::{
-    builder::metadata::BODY_META,
+    builder::metadata::*,
     compiler::{
         file::{FileReader, FileWriter},
         path::SetExtension,
-        snapshot::{SaveSnapshot, WaitSnapshot},
         template::{TemplateEngine, TemplateRenderer},
+        utils::PipeCompiler,
     },
     *,
 };
-use anyhow::anyhow;
 use pulldown_cmark::{html::push_html, Options, Parser};
-use std::sync::Arc;
+use tracing_error::SpanTrace;
 
 /// Markdown renderer will read [`_body`][crate::builder::metadata::BODY_META] metadata as markdown,
 /// render HTML, and store HTML as [`_body`][crate::builder::metadata::BODY_META] metadata.
+#[derive(Clone)]
 pub struct MarkdownRenderer {
     options: Options,
 }
@@ -27,27 +27,32 @@ impl MarkdownRenderer {
     }
 }
 impl Compiler for MarkdownRenderer {
-    fn compile(&self, ctx: Context) -> CompilerReturn {
+    #[tracing::instrument(skip(self, ctx))]
+    fn next_step(&mut self, mut ctx: Context) -> CompilerReturn {
         let options = self.options.clone();
-        Box::new(compile!({
-            let mut ctx = ctx;
-            let body = ctx.body()?;
-            let body = body.as_str().ok_or(anyhow!("Body is not string"))?;
-            let body = body.read().unwrap();
-            let fm = fronma::parser::parse::<Metadata>(&body)
-                .map_err(|e| anyhow!("Front matter parse error: {:?}", e))?;
+        compile!({
+            let body = ctx.body().await.ok_or(Error::InvalidMetadata {
+                trace: SpanTrace::capture(),
+            })?;
+            let body = body.as_str().ok_or(Error::InvalidMetadata {
+                trace: SpanTrace::capture(),
+            })?;
+            let fm = fronma::parser::parse::<Value>(&body).map_err(|_| Error::InvalidMetadata {
+                trace: SpanTrace::capture(),
+            })?;
             let file_metadata = fm.headers;
             let parser = Parser::new_ext(fm.body, options);
             let mut html = String::new();
             push_html(&mut html, parser);
-            if let Metadata::Map(map) = file_metadata {
-                for (k, v) in map.read().unwrap().clone().into_iter() {
-                    ctx.insert_compiling_metadata(k, v);
+            if let Value::Object(map) = file_metadata {
+                for (k, v) in map.into_iter() {
+                    ctx.metadata_mut().insert_local(k, v);
                 }
             }
-            ctx.insert_compiling_metadata(BODY_META, Metadata::from(html));
-            Ok(ctx)
-        }))
+            ctx.metadata_mut()
+                .insert_local(BODY_META.to_owned(), Value::String(html));
+            Ok(CompileStep::Completed(ctx))
+        })
     }
 }
 
@@ -56,11 +61,9 @@ impl Compiler for MarkdownRenderer {
 /// This compiler sets target file extension to .html, read file, render markdown, save snapshot,
 /// wait snapshot if you specified, and render HTML using specified [`compiler::template::TemplateEngine`]
 /// and output target file.
+#[derive(Clone)]
 pub struct MarkdownCompiler {
-    template: String,
-    template_engine: Arc<TemplateEngine>,
-    options: Option<Options>,
-    wait_snapshots: WaitSnapshot,
+    compiler: PipeCompiler,
 }
 impl MarkdownCompiler {
     /// Create markdown compiler
@@ -68,38 +71,26 @@ impl MarkdownCompiler {
     /// Pass template engine ref, template name and
     /// markdown rendering option
     pub fn new(
-        template_engine: Arc<TemplateEngine>,
+        template_engine: TemplateEngine,
         template: impl AsRef<str>,
         options: Option<Options>,
     ) -> Self {
         let template = template.as_ref().to_owned();
-        Self {
-            template,
-            template_engine,
-            options,
-            wait_snapshots: WaitSnapshot::new(),
-        }
-    }
-    pub fn wait_snapshot(mut self, rule: impl AsRef<str>, until: usize) -> Self {
-        self.wait_snapshots = self.wait_snapshots.wait(rule, until);
-        self
-    }
-}
-impl Compiler for MarkdownCompiler {
-    fn compile(&self, ctx: Context) -> CompilerReturn {
-        let template = self.template.clone();
-        let template_engine = self.template_engine.clone();
-        let options = self.options.clone();
-        let wait_snapshots = self.wait_snapshots.clone();
         let compiler = pipe!(
             SetExtension::new("html"),
             FileReader::new(),
             MarkdownRenderer::new(options),
-            SaveSnapshot::new(),
-            wait_snapshots,
+            |ctx| compile!(Ok(CompileStep::WaitStage(ctx))),
             TemplateRenderer::new(template_engine, template),
             FileWriter::new(),
         );
-        compiler.compile(ctx)
+
+        Self { compiler }
+    }
+}
+impl Compiler for MarkdownCompiler {
+    #[tracing::instrument(skip(self, ctx))]
+    fn next_step(&mut self, ctx: Context) -> CompilerReturn {
+        self.compiler.next_step(ctx)
     }
 }

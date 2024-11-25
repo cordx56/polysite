@@ -1,5 +1,4 @@
-use crate::*;
-use anyhow::Result;
+use crate::{builder::metadata::Value, *};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -14,9 +13,10 @@ use std::collections::HashMap;
 ///     .compiling("compiling", vec!["value"])
 ///     .unwrap();
 /// ```
+#[derive(Clone)]
 pub struct SetMetadata {
-    compiling: HashMap<String, Metadata>,
-    global: HashMap<String, Metadata>,
+    compiling: HashMap<String, Value>,
+    global: HashMap<String, Value>,
 }
 impl SetMetadata {
     pub fn new() -> Self {
@@ -25,29 +25,29 @@ impl SetMetadata {
             global: HashMap::new(),
         }
     }
-    pub fn global(mut self, k: impl AsRef<str>, v: impl Serialize) -> Result<Self> {
+    pub fn global(mut self, k: impl AsRef<str>, v: impl Serialize) -> Result<Self, Error> {
         self.global
-            .insert(k.as_ref().to_owned(), Metadata::from_ser(v)?);
+            .insert(k.as_ref().to_owned(), Metadata::to_value(v)?);
         Ok(self)
     }
-    pub fn compiling(mut self, k: impl AsRef<str>, v: impl Serialize) -> Result<Self> {
+    pub fn local(mut self, k: impl AsRef<str>, v: impl Serialize) -> Result<Self, Error> {
         self.compiling
-            .insert(k.as_ref().to_owned(), Metadata::from_ser(v)?);
+            .insert(k.as_ref().to_owned(), Metadata::to_value(v)?);
         Ok(self)
     }
 }
 impl Compiler for SetMetadata {
-    fn compile(&self, mut ctx: Context) -> CompilerReturn {
-        let compiling = self.compiling.clone();
-        let global = self.global.clone();
+    #[tracing::instrument(skip(self, ctx))]
+    fn next_step(&mut self, mut ctx: Context) -> CompilerReturn {
+        let s = self.clone();
         compile!({
-            for (k, v) in global.into_iter() {
-                ctx.insert_global_metadata(k, v);
+            for (k, v) in s.global.into_iter() {
+                ctx.metadata().insert_global(k, v).await;
             }
-            for (k, v) in compiling.into_iter() {
-                ctx.insert_compiling_metadata(k, v);
+            for (k, v) in s.compiling.into_iter() {
+                ctx.metadata_mut().insert_local(k, v);
             }
-            Ok(ctx)
+            Ok(CompileStep::Completed(ctx))
         })
     }
 }

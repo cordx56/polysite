@@ -1,67 +1,60 @@
 use crate::*;
-use std::sync::Arc;
+use std::collections::VecDeque;
 
 /// Compiler function
 ///
 /// compiler function takes [`Context`] as parameter,
 /// and returns [`CompilerReturn`] which is boxed future.
-pub trait CompileFunction: Fn(Context) -> CompilerReturn + Send + Sync {}
-impl<F> CompileFunction for F where F: Fn(Context) -> CompilerReturn + Send + Sync {}
+pub trait CompileFunction: (Fn(Context) -> CompilerReturn) + Clone + Send + Sync {}
+impl<F> CompileFunction for F where F: (Fn(Context) -> CompilerReturn) + Clone + Send + Sync {}
 
-/// Generic compiler
-/// You can create new compiler using this.
-pub struct GenericCompiler {
-    compile_method: Box<dyn CompileFunction>,
-}
-impl GenericCompiler {
-    pub fn empty() -> Self {
-        Self::from(|ctx| compile!(Ok(ctx)))
-    }
-    /// Create compiler from closure which implements [`CompileFunction`].
-    ///
-    /// # Example
-    /// ```
-    /// use polysite::{compiler::utils::GenericCompiler, *};
-    /// GenericCompiler::from(|ctx| compile!({ Ok(ctx) }));
-    /// ```
-    pub fn from<F: CompileFunction + 'static>(f: F) -> Self {
-        Self {
-            compile_method: Box::new(f),
-        }
-    }
-}
-impl Compiler for GenericCompiler {
-    fn compile(&self, ctx: Context) -> CompilerReturn {
-        (self.compile_method)(ctx)
+/// Create compiler from closure which implements [`CompileFunction`].
+impl<F> Compiler for F
+where
+    F: (Fn(Context) -> CompilerReturn) + Clone + Send + Sync,
+{
+    fn next_step(&mut self, ctx: Context) -> CompilerReturn {
+        (self)(ctx)
     }
 }
 
 /// Pipe compiler
 /// Create large compiler from piping small ones
+#[derive(Clone)]
 pub struct PipeCompiler {
-    compilers: Vec<Arc<dyn Compiler>>,
+    compilers: VecDeque<Box<dyn Compiler>>,
 }
 impl PipeCompiler {
     pub fn new() -> Self {
         Self {
-            compilers: Vec::new(),
+            compilers: VecDeque::new(),
         }
     }
-    pub fn add_compiler(mut self, compiler: Arc<dyn Compiler>) -> Self {
-        self.compilers.push(compiler);
+    pub fn add_compiler(mut self, compiler: impl Compiler + 'static) -> Self {
+        self.compilers.push_back(Box::new(compiler));
         self
     }
 }
 impl Compiler for PipeCompiler {
-    fn compile(&self, ctx: Context) -> CompilerReturn {
-        let compilers = self.compilers.clone();
-        compile!({
-            let mut ctx = ctx;
-            for c in compilers {
-                ctx = c.compile(ctx).await?;
-            }
-            Ok(ctx)
-        })
+    fn next_step(&mut self, ctx: Context) -> CompilerReturn {
+        if let Some(mut compiler) = self.compilers.pop_front() {
+            let len = self.compilers.len();
+            compile!({
+                let res = compiler.next_step(ctx).await?;
+                match res {
+                    CompileStep::Completed(ctx) => {
+                        if len == 0 {
+                            Ok(CompileStep::Completed(ctx))
+                        } else {
+                            Ok(CompileStep::InProgress(ctx))
+                        }
+                    }
+                    _ => Ok(res),
+                }
+            })
+        } else {
+            compile!(Ok(CompileStep::Completed(ctx)))
+        }
     }
 }
 
@@ -84,9 +77,9 @@ impl Compiler for PipeCompiler {
 macro_rules! pipe {
     ($f:expr, $($n:expr),+ $(,)?) => {{
         $crate::compiler::utils::PipeCompiler::new()
-            .add_compiler($f.get())
+            .add_compiler($f)
             $(
-                .add_compiler($n.get())
+                .add_compiler($n)
             )+
     }}
 }

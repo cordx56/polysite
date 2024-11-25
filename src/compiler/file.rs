@@ -1,10 +1,11 @@
-use crate::{builder::metadata::BODY_META, *};
-use anyhow::{anyhow, Context as _};
+use crate::{builder::metadata::*, *};
 use std::fs::copy;
 use std::io::Write;
+use tracing_error::SpanTrace;
 
 /// [`FileReader`] compiler will read source file as String and
 /// store data as `_body` metadata.
+#[derive(Clone)]
 pub struct FileReader;
 impl FileReader {
     pub fn new() -> Self {
@@ -12,17 +13,22 @@ impl FileReader {
     }
 }
 impl Compiler for FileReader {
-    fn compile(&self, ctx: Context) -> CompilerReturn {
+    #[tracing::instrument(skip(self, ctx))]
+    fn next_step(&mut self, mut ctx: Context) -> CompilerReturn {
         compile!({
-            let mut ctx = ctx;
-            let src = ctx.get_source_data()?;
-            ctx.insert_compiling_metadata(BODY_META, src);
-            Ok(ctx)
+            let src = ctx.source_body().await?;
+            let meta = match String::from_utf8(src.clone()) {
+                Ok(s) => Value::from(s),
+                Err(_) => Value::from_bytes(&src),
+            };
+            ctx.metadata_mut().insert_local(BODY_META.to_owned(), meta);
+            Ok(CompileStep::Completed(ctx))
         })
     }
 }
 
 /// [`FileWriter`] compiler will write data stored in `_body` metadata to target file.
+#[derive(Clone)]
 pub struct FileWriter;
 impl FileWriter {
     pub fn new() -> Self {
@@ -30,31 +36,33 @@ impl FileWriter {
     }
 }
 impl Compiler for FileWriter {
-    fn compile(&self, ctx: Context) -> CompilerReturn {
+    #[tracing::instrument(skip(self, ctx))]
+    fn next_step(&mut self, ctx: Context) -> CompilerReturn {
         compile!({
-            let target_display = ctx.target()?;
-            let target_display = target_display.display();
-            let mut target = ctx
-                .open_target()
-                .with_context(|| format!("Failed to open file {}", target_display))?;
-            let body = ctx.body()?;
-            if let Some(s) = body.as_str() {
-                target
-                    .write(s.read().unwrap().as_bytes())
-                    .with_context(|| format!("Failed to write file {}", target_display))?;
-            } else if let Metadata::Bytes(bytes) = body {
-                target
-                    .write(bytes.read().unwrap().as_slice())
-                    .with_context(|| format!("Failed to write file {}", target_display))?;
+            let mut target = ctx.open_target().await?;
+            let body = ctx.body().await.ok_or(Error::InvalidMetadata {
+                trace: SpanTrace::capture(),
+            })?;
+            let write = if let Some(s) = body.as_str() {
+                target.write(s.as_bytes())
+            } else if let Some(bytes) = body.as_bytes() {
+                target.write(&bytes)
             } else {
-                return Err(anyhow!("Invalid body format"));
-            }
-            Ok(ctx)
+                return Err(Error::InvalidMetadata {
+                    trace: SpanTrace::capture(),
+                });
+            };
+            write.map_err(|io_error| Error::FileIo {
+                trace: SpanTrace::capture(),
+                io_error,
+            })?;
+            Ok(CompileStep::Completed(ctx))
         })
     }
 }
 
 /// [`CopyCompiler`] will simply copies source file to target file
+#[derive(Clone)]
 pub struct CopyCompiler;
 impl CopyCompiler {
     pub fn new() -> Self {
@@ -62,13 +70,24 @@ impl CopyCompiler {
     }
 }
 impl Compiler for CopyCompiler {
-    fn compile(&self, ctx: Context) -> CompilerReturn {
+    #[tracing::instrument(skip(self, ctx))]
+    fn next_step(&mut self, ctx: Context) -> CompilerReturn {
         compile!({
-            ctx.create_target_parent_dir()?;
-            let src = ctx.source()?;
-            let tgt = ctx.target()?;
-            copy(src, tgt).context("Copy error")?;
-            Ok(ctx)
+            ctx.create_target_parent_dir().await?;
+            let src = ctx.source().await;
+            let tgt = ctx.target().await;
+            match (src, tgt) {
+                (Some(src), Some(tgt)) => {
+                    copy(src, tgt).map_err(|io_error| Error::FileIo {
+                        trace: SpanTrace::capture(),
+                        io_error,
+                    })?;
+                    Ok(CompileStep::Completed(ctx))
+                }
+                _ => Err(Error::InvalidMetadata {
+                    trace: SpanTrace::capture(),
+                }),
+            }
         })
     }
 }

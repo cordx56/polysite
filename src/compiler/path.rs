@@ -2,8 +2,10 @@ use crate::{
     builder::metadata::{PATH_META, TARGET_FILE_META},
     *,
 };
+use tracing_error::SpanTrace;
 
 /// [`SetExtension`] will change target file's extension and URL path extension to specified one.
+#[derive(Clone)]
 pub struct SetExtension(String);
 impl SetExtension {
     pub fn new(ext: impl AsRef<str>) -> Self {
@@ -11,22 +13,27 @@ impl SetExtension {
     }
 }
 impl Compiler for SetExtension {
-    fn compile(&self, mut ctx: Context) -> CompilerReturn {
+    #[tracing::instrument(skip(self, ctx))]
+    fn next_step(&mut self, mut ctx: Context) -> CompilerReturn {
         let ext = self.0.clone();
         compile!({
-            let mut target = ctx.target()?;
-            let mut path = ctx.path()?;
+            let mut target = ctx.target().await.ok_or(Error::InvalidMetadata {
+                trace: SpanTrace::capture(),
+            })?;
+            let mut path = ctx.path().await.ok_or(Error::InvalidMetadata {
+                trace: SpanTrace::capture(),
+            })?;
             target.set_extension(ext.clone());
-            ctx.insert_compiling_metadata(
-                TARGET_FILE_META,
-                Metadata::from(target.to_string_lossy().to_string()),
+            ctx.metadata_mut().insert_local(
+                TARGET_FILE_META.to_owned(),
+                Metadata::to_value(target.to_string_lossy())?,
             );
             path.set_extension(ext);
-            ctx.insert_compiling_metadata(
-                PATH_META,
-                Metadata::from(path.to_string_lossy().to_string()),
+            ctx.metadata_mut().insert_local(
+                PATH_META.to_owned(),
+                Metadata::to_value(path.to_string_lossy())?,
             );
-            Ok(ctx)
+            Ok(CompileStep::Completed(ctx))
         })
     }
 }
