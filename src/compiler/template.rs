@@ -3,20 +3,17 @@ use serde_json::Value;
 use std::sync::Arc;
 use tera::Tera;
 
-/// Template engine (uses [`tera`])
+/// Template engine, which uses [`Tera`].
 #[derive(Clone)]
 pub struct TemplateEngine {
     tera: Tera,
 }
 impl TemplateEngine {
-    /// Load templates and create
-    /// template engine instance
     pub fn new(template_dir: impl AsRef<str>) -> Result<Self, Error> {
         let tera = tera::Tera::new(template_dir.as_ref()).map_err(|err| Error::user_error(err))?;
         Ok(Self { tera })
     }
 
-    /// Get `Arc<TemplateEngine>` for sharing template engine for multiple tasks
     pub fn get(self) -> Arc<Self> {
         Arc::new(self)
     }
@@ -35,8 +32,7 @@ impl TemplateEngine {
     }
 }
 
-/// Template renderer renders HTML using specified template and
-/// compiling metadata.
+/// [`TemplateRenderer`] renders HTML using the specified template and [`Metadata`] in [`Context`].
 #[derive(Clone)]
 pub struct TemplateRenderer {
     engine: TemplateEngine,

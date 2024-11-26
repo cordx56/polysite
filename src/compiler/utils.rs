@@ -2,14 +2,7 @@ use crate::*;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// Compiler function
-///
-/// compiler function takes [`Context`] as parameter,
-/// and returns [`CompilerReturn`] which is boxed future.
-pub trait CompileFunction: (Fn(Context) -> CompilerReturn) + Clone + Send + Sync {}
-impl<F> CompileFunction for F where F: (Fn(Context) -> CompilerReturn) + Clone + Send + Sync {}
-
-/// Create compiler from closure which implements [`CompileFunction`].
+/// Create compiler from closure
 impl<F> Compiler for F
 where
     F: (Fn(Context) -> CompilerReturn) + Clone + Send + Sync,
@@ -19,6 +12,7 @@ where
     }
 }
 
+/// Wait for other tasks. This may be used to utilize intermediate results.
 #[derive(Clone)]
 pub struct WaitStage {
     steps: usize,
@@ -31,6 +25,7 @@ impl WaitStage {
             current: 0,
         }
     }
+    /// Specify how many steps to wait. The default is one step.
     pub fn wait_steps(steps: usize) -> Self {
         Self { steps, current: 0 }
     }
@@ -46,8 +41,8 @@ impl Compiler for WaitStage {
     }
 }
 
-/// Pipe compiler
-/// Create large compiler from piping small ones
+/// Create a large compiler by piping multiple compilers.
+/// You may also use [`pipe!`] macro.
 #[derive(Clone)]
 pub struct PipeCompiler {
     compilers: Vec<Box<dyn Compiler>>,
@@ -60,6 +55,7 @@ impl PipeCompiler {
             ready: None,
         }
     }
+    /// Add the compiler to the end of the pipeline.
     pub fn add_compiler(mut self, compiler: impl Compiler + 'static) -> Self {
         self.compilers.push(Box::new(compiler));
         self
@@ -96,12 +92,10 @@ impl Compiler for PipeCompiler {
     }
 }
 
-/// [`pipe!`] macro may used to make large compiler from
-/// piping multiple compilers
+/// [`pipe!`] macro may used to make large compiler from piping multiple compilers
 ///
 /// # Example
 /// This example will read source as Markdown and write HTML to target.
-///
 /// ```
 /// use polysite::{compiler::*, *};
 /// pipe!(

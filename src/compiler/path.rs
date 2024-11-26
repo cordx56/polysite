@@ -4,7 +4,7 @@ use crate::{
 };
 use tracing_error::SpanTrace;
 
-/// [`SetExtension`] will change target file's extension and URL path extension to specified one.
+/// [`SetExtension`] changes target file's extension and URL path extension to specified one.
 #[derive(Clone)]
 pub struct SetExtension(String);
 impl SetExtension {

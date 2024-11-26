@@ -9,7 +9,7 @@ use tokio::{
 };
 
 #[derive(Clone)]
-pub struct CompileRunner {
+pub(crate) struct CompileRunner {
     rule: String,
     version: Version,
     context: Context,

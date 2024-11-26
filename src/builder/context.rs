@@ -4,9 +4,8 @@ use std::fs;
 use std::path::PathBuf;
 use tracing_error::SpanTrace;
 
-/// [`Version`] represents compilation file version.
-/// If the same version of a source file path is registered for compilation, that file will be
-/// skipped.
+/// [`Version`] represents the compilation file version. Once a source file has been built, any
+/// subsequent builds of the same source path with the same version will be skipped.
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Version(String);
 impl Version {
@@ -26,10 +25,8 @@ impl<S: AsRef<str>> From<S> for Version {
 }
 
 #[derive(Clone)]
-/// Compiling context
-///
-/// This holds global, compiling (local) and versions' [`Metadata`], snapshot manager.
-/// This also provides some helper methods.
+/// [`Context`] holds [`Metadata`] and [`Config`].
+/// The context is passed to [`Compiler::next_step`], and the modified context is returned.
 pub struct Context {
     meta: Metadata,
     config: Config,
@@ -43,11 +40,9 @@ impl Context {
         }
     }
 
-    /// Get [`Metadata`] that merges global and compiling metadata
     pub fn metadata(&self) -> &Metadata {
         &self.meta
     }
-    /// Get [`Metadata`] that merges global and compiling metadata
     pub fn metadata_mut(&mut self) -> &mut Metadata {
         &mut self.meta
     }

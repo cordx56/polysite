@@ -17,12 +17,14 @@ pub const VERSION_META: &str = "_version";
 pub const BODY_META: &str = "_body";
 pub const VERSIONS_META: &str = "_versions";
 
+/// [`Metadata`] holds global and local metadata, which is represented as a [`Value`].
 #[derive(Clone, Debug)]
 pub struct Metadata {
     global: Arc<RwLock<Value>>,
     local: Value,
 }
 
+/// Read locked metadata, which contains locked global metadata.
 #[derive(Clone, Debug)]
 pub struct ReadLockedMetadata<'a> {
     metadata: &'a Metadata,
@@ -194,7 +196,7 @@ impl Serialize for ReadLockedMetadata<'_> {
     }
 }
 
-//pub type Metadata = serde_json::Value;
+/// Trait for reading and writing binary data for [`Metadata`].
 pub trait BytesValue: Sized {
     fn from_ser(ser: impl Serialize) -> Result<Self, Error>;
     fn as_bytes(&self) -> Option<Vec<u8>>;

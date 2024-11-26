@@ -11,7 +11,7 @@ pub struct Builder {
 }
 
 impl Builder {
-    /// Create new builder with config
+    /// Create new builder with [`Config`]
     pub fn new(config: Config) -> Self {
         Self {
             ctx: Context::new(config),
@@ -19,17 +19,12 @@ impl Builder {
         }
     }
 
-    /// Add build step
-    ///
-    /// This method receives rules as a parameter and push as build step
-    /// Rules registered in a same step will be built concurrently
+    /// Add a new build step with multiple rules that are built concurrently.
     pub fn add_step(mut self, step: impl IntoIterator<Item = Rule>) -> Self {
         self.steps.push(step.into_iter().collect());
         self
     }
 
-    /// Run build
-    ///
     /// Run all registered build steps
     #[tracing::instrument(skip(self))]
     pub async fn build(self) -> Result<(), Error> {

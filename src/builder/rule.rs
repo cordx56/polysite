@@ -4,7 +4,8 @@ use glob::glob;
 use std::path::PathBuf;
 use tracing_error::SpanTrace;
 
-/// The type represents the rules for each step of the build.
+/// The [`Rule`] is used to define the rule name, source files, [`Version`], and the [`Compiler`] used for building.
+/// The results of the compilation are saved in the [`Metadata`], using the rule's name as the key.
 pub struct Rule {
     name: String,
     globs: Option<Vec<String>>,
@@ -14,7 +15,6 @@ pub struct Rule {
 }
 
 impl Rule {
-    /// Create new rule
     pub fn new(name: impl AsRef<str>, compiler: impl Compiler + 'static) -> Self {
         let name = name.as_ref().to_owned();
         Rule {
@@ -26,27 +26,23 @@ impl Rule {
         }
     }
 
-    /// Get this rule name
+    /// Get this rule's name
     pub fn get_name(&self) -> &str {
         &self.name
     }
 
-    /// Set a list of source file match globs
+    /// Set a list of glob patterns to compile.
     pub fn set_globs(mut self, globs: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
         self.globs = Some(globs.into_iter().map(|s| s.as_ref().to_owned()).collect());
         self
     }
-    /// Set source files name to create
+    /// Set a list of source file names to create.
     pub fn set_create(mut self, create: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
         self.creates = Some(create.into_iter().map(|s| s.as_ref().to_owned()).collect());
         self
     }
 
-    /// Set compilation version
-    ///
-    /// If the same version of a source file path is registered for compilation, that file will be
-    /// skipped.
-    /// Also read [`Version`].
+    /// Set compilation [`Version`]
     pub fn set_version(mut self, version: impl Into<Version>) -> Self {
         self.version = version.into();
         self

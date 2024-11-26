@@ -2,7 +2,7 @@ use crate::{builder::metadata::Value, *};
 use serde::Serialize;
 use std::collections::HashMap;
 
-/// The compiler to set [`Metadata`] for the [`Context`].
+/// [`Metadata`] can used for setting metadata
 #[derive(Clone)]
 pub struct SetMetadata {
     compiling: HashMap<String, Value>,

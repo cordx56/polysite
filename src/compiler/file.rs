@@ -3,8 +3,7 @@ use std::fs::copy;
 use std::io::Write;
 use tracing_error::SpanTrace;
 
-/// [`FileReader`] compiler will read source file as String and
-/// store data as `_body` metadata.
+/// [`FileReader`] reads the source file as a [`String`] and stores the data using [`SOURCE_FILE_META`] as the key.
 #[derive(Clone)]
 pub struct FileReader;
 impl FileReader {
@@ -27,7 +26,7 @@ impl Compiler for FileReader {
     }
 }
 
-/// [`FileWriter`] compiler will write data stored in `_body` metadata to target file.
+/// [`FileWriter`] writes the data stored in [`BODY_META`] to the target file, which path is saved in [`TARGET_FILE_META`].
 #[derive(Clone)]
 pub struct FileWriter;
 impl FileWriter {
@@ -61,7 +60,7 @@ impl Compiler for FileWriter {
     }
 }
 
-/// [`CopyCompiler`] will simply copies source file to target file
+/// [`CopyCompiler`] simply copies source file to target file
 #[derive(Clone)]
 pub struct CopyCompiler;
 impl CopyCompiler {

@@ -1,4 +1,5 @@
 # polysite
+
 Highly customizable, polymorphic static site generator library, polysite.
 
 [![Crates.io][crate-badge]](https://crates.io/crates/polysite)
@@ -10,9 +11,6 @@ Highly customizable, polymorphic static site generator library, polysite.
 [license-badge]: https://img.shields.io/github/license/cordx56/polysite?style=flat-square
 
 polysite is inspired by [Hakyll](https://jaspervdj.be/hakyll/) written in Haskell.
-
-## Difference from other static site generator
-I know some famous static site generator, like [Zola](https://www.getzola.org/).
-But Zola is not enough customizable for me.
-
 polysite aims to support creating your original static site generator.
+
+The usage is described in the [API documentation](https://docs.rs/polysite/latest/polysite/).

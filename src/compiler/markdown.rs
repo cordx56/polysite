@@ -11,16 +11,12 @@ use crate::{
 use pulldown_cmark::{html::push_html, Options, Parser};
 use tracing_error::SpanTrace;
 
-/// Markdown renderer will read [`_body`][crate::builder::metadata::BODY_META] metadata as markdown,
-/// render HTML, and store HTML as [`_body`][crate::builder::metadata::BODY_META] metadata.
+/// [`MarkdownRenderer`] reads the body from [`BODY_META`], renders it to HTML, and saves the HTML to [`BODY_META`].
 #[derive(Clone)]
 pub struct MarkdownRenderer {
     options: Options,
 }
 impl MarkdownRenderer {
-    /// Create markdown renderer
-    ///
-    /// Pass [`pulldown_cmark::Options`] to render markdown to HTML
     pub fn new(options: Option<Options>) -> Self {
         let options = options.unwrap_or(Options::all());
         Self { options }
@@ -56,20 +52,12 @@ impl Compiler for MarkdownRenderer {
     }
 }
 
-/// Markdown compiler
-///
-/// This compiler sets target file extension to .html, read file, render markdown, save snapshot,
-/// wait snapshot if you specified, and render HTML using specified [`compiler::template::TemplateEngine`]
-/// and output target file.
+/// [`MarkdownCompiler`] sets the target file extension to .html, reads the file, renders Markdown, waits for other tasks, renders HTML using the specified [`TemplateEngine`], and outputs it to the target file.
 #[derive(Clone)]
 pub struct MarkdownCompiler {
     compiler: PipeCompiler,
 }
 impl MarkdownCompiler {
-    /// Create markdown compiler
-    ///
-    /// Pass template engine ref, template name and
-    /// markdown rendering option
     pub fn new(
         template_engine: TemplateEngine,
         template: impl AsRef<str>,

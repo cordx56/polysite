@@ -2,10 +2,10 @@
 //!
 //! This crate is inspired by [Hakyll][hakyll] written in Haskell.
 //!
-//! # Difference from other static site generator
-//! I know [Zola][zola], static site generator written in Rust.
-//! But zola is not enough customizable for me.
-//! So I create this crate.
+//! # Concept
+//!
+//! The concept of polysite is _a set of components_ that can be used for static site generation. You can make your own static site generator _by combining_ the various parts in polysite.
+//! polysite uses [`Metadata`] to store the result of each step of the compilation. Each step is passed a [`Context`], modifies metadata, and returns a [`CompileResult`], which represents the result of that step of the compilation task. Each step of compilation process is implemented by implementing [`Compiler::next_step`]. You can create a large compiler by _piping_ together multiple compilers.
 //!
 //! # How to use
 //! If you would like to simply build site written in Markdown, use [`compiler::markdown::MarkdownCompiler`].
@@ -22,7 +22,7 @@
 //! [`Compiler`] trait is implemented for closures that take a [`Context`] as an argument and return a [`CompilerReturn`].
 //!
 //! # Metadata
-//! polysite uses [`Metadata`] to save compile result and it can be used in other compilation task.
+//! polysite uses [`Metadata`] to save compilation result and it can be used in other compilation task.
 //!
 //! There are some default metadata:
 //! - [`_rule`][builder::metadata::RULE_META]: Compiling rule name
@@ -30,8 +30,7 @@
 //! - [`_source`][builder::metadata::SOURCE_FILE_META]: source file path
 //! - [`_target`][builder::metadata::TARGET_FILE_META]: target file path
 //! - [`_path`][builder::metadata::PATH_META]: absolute URL path
-//! - [`_body`][builder::metadata::BODY_META]: Content body. For the result of each compilation
-//! task.
+//! - [`_body`][builder::metadata::BODY_META]: Content body. For the result of each compilation task.
 //!
 //! You can use these default key of [`Metadata`] to create new compiler.
 //!

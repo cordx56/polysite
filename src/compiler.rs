@@ -13,49 +13,27 @@ use std::future::Future;
 use std::pin::Pin;
 
 pub enum CompileStep {
+    /// The compilation task is completed.
     Completed(Context),
+    /// Compilation task is in progress.
     InProgress(Context),
+    /// Wait for other tasks to finish the same step.
     WaitStage(Context),
 }
 
 /// [`CompileResult`] is the result type that returned by compiler's compile method.
 pub type CompileResult = Result<CompileStep, Error>;
-/// [`CompilerReturn`] is boxed `Future`, which executes compile.
+/// [`CompilerReturn`] is boxed [`Future`], which executes compile.
 pub type CompilerReturn = Pin<Box<dyn Future<Output = CompileResult> + Send>>;
 
-/// Compiler trait
-///
-/// All compiler must implement this trait.
+/// All compiler must implement [`Compiler`] trait.
 pub trait Compiler: DynClone + Send + Sync {
-    /*
-    /// Takes a value of type [`Context`] as an argument and calls
-    /// [`Compiler::next_step`] method repeatedly until it no longer returns a value.
-    /// This executes all steps of the compilation process.
-    fn compile(&self, mut ctx: Context) -> CompilerReturn {
-        compile! {
-            loop {
-                ctx = match self.next_step(ctx) {
-                    CompileStepResult::Completed(v) => return v.await,
-                    CompileStepResult::InProgress(v) => v.await?,
-                }
-            }
-        }
-    }
-    */
-    /// Executes the compilation of the next step.
+    /// Executes the next step of the compilation
     fn next_step(&mut self, ctx: Context) -> CompilerReturn;
 }
-/*
-impl<C: Compiler> Compiler for Arc<C> {
-    async fn compile(&self, ctx: Context) -> CompilerReturn {
-        C::compile(&self, ctx)
-    }
-}
-*/
 clone_trait_object!(Compiler);
 
-/// [`compile!`] macro may used to make compile function which returns boxed Future.
-/// This is provided for ease of creating boxed Future.
+/// [`compile!`] macro may used to make pinned, boxed Future, which is async block.
 #[macro_export]
 macro_rules! compile {
     ($b:expr) => {
