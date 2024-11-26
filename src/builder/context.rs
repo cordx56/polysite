@@ -104,8 +104,9 @@ impl Context {
     }
 
     /// Get source file body as bytes
+    #[tracing::instrument(skip(self))]
     pub async fn source_body(&self) -> Result<Vec<u8>, Error> {
-        let file = self.source().await.ok_or_else(|| Error::InvalidMetadata {
+        let file = self.source().await.ok_or(Error::InvalidMetadata {
             trace: SpanTrace::capture(),
         })?;
         fs::read(&file).map_err(|io_error| Error::FileIo {
@@ -114,12 +115,14 @@ impl Context {
         })
     }
     /// Get source file string
+    #[tracing::instrument(skip(self))]
     pub async fn source_string(&self) -> Result<String, Error> {
         String::from_utf8(self.source_body().await?).map_err(|_| Error::InvalidMetadata {
             trace: SpanTrace::capture(),
         })
     }
     /// Create target file's parent directory
+    #[tracing::instrument(skip(self))]
     pub async fn create_target_parent_dir(&self) -> Result<PathBuf, Error> {
         if let Some(target) = self.target().await {
             let dir = target.parent().unwrap();
@@ -135,6 +138,7 @@ impl Context {
         }
     }
     /// Open target file to write
+    #[tracing::instrument(skip(self))]
     pub async fn open_target(&self) -> Result<fs::File, Error> {
         let target = self.create_target_parent_dir().await?;
         fs::File::create(&target).map_err(|io_error| Error::FileIo {

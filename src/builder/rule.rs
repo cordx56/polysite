@@ -4,6 +4,7 @@ use glob::glob;
 use std::path::PathBuf;
 use tracing_error::SpanTrace;
 
+/// The type represents the rules for each step of the build.
 pub struct Rule {
     name: String,
     globs: Option<Vec<String>>,
@@ -91,18 +92,36 @@ impl Rule {
                 })
             }
         };
+        let version_files: Option<Vec<_>> = ctx
+            .metadata()
+            .read_lock()
+            .await
+            .get_version(&self.version)
+            .map(|v| v.into_iter().map(|(source, _)| source).collect());
+        let paths: Vec<_> = paths
+            .into_iter()
+            .filter(|p| {
+                version_files
+                    .as_ref()
+                    .map(|v| {
+                        v.iter()
+                            .filter(|w| &**w == &*p.to_string_lossy())
+                            .next()
+                            .is_none()
+                    })
+                    .unwrap_or(true)
+            })
+            .collect();
 
         let name = self.get_name().to_owned();
         let src_dir = ctx.config().source_dir();
         let target_dir = ctx.config().target_dir();
-        let runner = CompileRunner::new(name, ctx, self.compiler);
+        let runner = CompileRunner::new(name, self.version, ctx, self.compiler);
         for source in paths {
             let path = source.strip_prefix(&src_dir).unwrap_or(&source);
             let target = target_dir.join(path);
             let path = PathBuf::from("/").join(path);
-            runner
-                .spawn_compile(self.version.get(), source, target, path)
-                .await;
+            runner.spawn_compile(source, target, path).await;
         }
         let ctx = runner.join().await?;
         Ok(ctx)

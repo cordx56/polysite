@@ -4,7 +4,7 @@ use crate::{
         file::{FileReader, FileWriter},
         path::SetExtension,
         template::{TemplateEngine, TemplateRenderer},
-        utils::PipeCompiler,
+        utils::{PipeCompiler, WaitStage},
     },
     *,
 };
@@ -80,7 +80,7 @@ impl MarkdownCompiler {
             SetExtension::new("html"),
             FileReader::new(),
             MarkdownRenderer::new(options),
-            |ctx| compile!(Ok(CompileStep::WaitStage(ctx))),
+            WaitStage::new(),
             TemplateRenderer::new(template_engine, template),
             FileWriter::new(),
         );

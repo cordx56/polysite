@@ -12,18 +12,17 @@
 //! The example is in [`examples/simple_markdown.rs`][simple_example].
 //!
 //! # How to create compiler
-//! If you would like to create new compiler, implement [`Compiler`] trait for your compiler type.
-//! [`Compiler::compile`] method is used for compile source file.
+//! If you would like to create a new compiler, implement [`Compiler`] trait for your type.
+//! [`Compiler::next_step`] method is used to define each step of the compilation task.
 //!
-//! [`compile!`] macro is provided for ease of creating boxed Future.
+//! [`compile!`] macro is provided for ease of creating pinned and boxed Future.
 //!
 //! If you would like to pipe some compilers, use [`pipe!`] macro.
 //!
-//! If you would like to create small compiler using closure, use
-//! [`compiler::utils::GenericCompiler`].
+//! [`Compiler`] trait is implemented for closures that take a [`Context`] as an argument and return a [`CompilerReturn`].
 //!
 //! # Metadata
-//! polysite uses metadata to save compile result and metadata can be used in other compilation.
+//! polysite uses [`Metadata`] to save compile result and it can be used in other compilation task.
 //!
 //! There are some default metadata:
 //! - [`_rule`][builder::metadata::RULE_META]: Compiling rule name
@@ -31,14 +30,14 @@
 //! - [`_source`][builder::metadata::SOURCE_FILE_META]: source file path
 //! - [`_target`][builder::metadata::TARGET_FILE_META]: target file path
 //! - [`_path`][builder::metadata::PATH_META]: absolute URL path
-//! - [`_body`][builder::metadata::BODY_META]: Content body. Some compilers save the result to this metadata.
+//! - [`_body`][builder::metadata::BODY_META]: Content body. For the result of each compilation
+//! task.
 //!
-//! You can use these default metadata to create new compiler.
+//! You can use these default key of [`Metadata`] to create new compiler.
 //!
 //! # Example
 //! Practical example is here.
 //! Other examples are in [repository][examples].
-//!
 //! ```
 //! use polysite::{
 //!     compiler::{
@@ -47,36 +46,39 @@
 //!     },
 //!     *,
 //! };
+//! use tracing_subscriber::prelude::*;
 //!
 //! #[tokio::main]
 //! async fn main() {
+//!     let subscriber =
+//!         tracing_subscriber::Registry::default().with(tracing_error::ErrorLayer::default());
+//!     tracing::subscriber::set_global_default(subscriber).unwrap();
+//!
 //!     simple_logger::SimpleLogger::new().env().init().unwrap();
-//!     let template_engine = TemplateEngine::new("templates/**").unwrap().get();
+//!
+//!     let template_engine = TemplateEngine::new("templates/**").unwrap();
 //!     Builder::new(Config::default())
-//!         .add_step(
-//!             [Rule::new("metadata").set_create(["metadata"]).set_compiler(
-//!                 SetMetadata::new()
-//!                     .global("site_title", "Hello, polysite!")
-//!                     .unwrap()
-//!                     .global("site_url", "https://example.com")
-//!                     .unwrap()
-//!                     .get(),
-//!             )],
+//!         .add_step([Rule::new(
+//!             "metadata",
+//!             SetMetadata::new()
+//!                 .global("site_title", "Hello, polysite!")
+//!                 .unwrap()
+//!                 .global("site_url", "https://example.com")
+//!                 .unwrap(),
 //!         )
-//!         .add_step([Rule::new("posts")
-//!             .set_globs(["posts/**/*.md"])
-//!             .set_compiler(
-//!                 MarkdownCompiler::new(template_engine.clone(), "practical.html", None)
-//!                     .wait_snapshot("posts", 1)
-//!                     .get(),
-//!             )])
+//!         .set_create(["metadata"])])
+//!         .add_step([Rule::new(
+//!             "posts",
+//!             MarkdownCompiler::new(template_engine.clone(), "practical.html", None),
+//!         )
+//!         .set_globs(["posts/**/*.md"])])
 //!         .add_step([
-//!             Rule::new("markdown").set_globs(["**/*.md"]).set_compiler(
-//!                 MarkdownCompiler::new(template_engine.clone(), "practical.html", None).get(),
-//!             ),
-//!             Rule::new("others")
-//!                 .set_globs(["**/*"])
-//!                 .set_compiler(CopyCompiler::new().get()),
+//!             Rule::new(
+//!                 "markdown",
+//!                 MarkdownCompiler::new(template_engine.clone(), "practical.html", None),
+//!             )
+//!             .set_globs(["**/*.md"]),
+//!             Rule::new("others", CopyCompiler::new()).set_globs(["**/*"]),
 //!         ])
 //!         .build()
 //!         .await

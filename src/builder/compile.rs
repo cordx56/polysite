@@ -1,6 +1,6 @@
 use super::metadata::*;
 use crate::*;
-use serde_json::Value;
+use serde_json::{json, Map, Value};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::{
@@ -11,6 +11,7 @@ use tokio::{
 #[derive(Clone)]
 pub struct CompileRunner {
     rule: String,
+    version: Version,
     context: Context,
     compiler: Box<dyn Compiler>,
     results: Arc<RwLock<Vec<(usize, Metadata)>>>,
@@ -19,9 +20,15 @@ pub struct CompileRunner {
 }
 
 impl CompileRunner {
-    pub fn new(rule: String, context: Context, compiler: Box<dyn Compiler>) -> Self {
+    pub fn new(
+        rule: String,
+        version: Version,
+        context: Context,
+        compiler: Box<dyn Compiler>,
+    ) -> Self {
         Self {
             rule,
+            version,
             context,
             compiler,
             results: Arc::new(RwLock::new(Vec::new())),
@@ -36,29 +43,48 @@ impl CompileRunner {
             .read()
             .await
             .iter()
-            .map(|(_, meta)| Value::Object(meta.local().clone()))
+            .filter_map(|(_, meta)| {
+                meta.source().map(|s| {
+                    (
+                        s.to_string_lossy().to_string(),
+                        Value::Object(meta.local().clone()),
+                    )
+                })
+            })
             .collect();
-        let res = Value::Array(res);
+        {
+            let map = Map::from_iter(res.clone().into_iter());
+            let mut global = self.context.metadata().global_mut().await;
+            let versions = global
+                .get_mut(VERSIONS_META)
+                .unwrap()
+                .as_object_mut()
+                .unwrap();
+            let version = match versions.get_mut(self.version.get()) {
+                Some(v) => v,
+                None => {
+                    versions.insert(self.version.get().to_owned(), json!({}));
+                    versions.get_mut(self.version.get()).unwrap()
+                }
+            };
+            merge_values(version, Value::Object(map));
+        }
+        let res = res.into_iter().map(|(_, v)| v).collect();
         self.context
             .metadata()
-            .insert_global(self.rule.clone(), res)
+            .insert_global(self.rule.clone(), Value::Array(res))
             .await;
     }
 
-    pub async fn spawn_compile(
-        &self,
-        version: impl AsRef<str>,
-        source: PathBuf,
-        target: PathBuf,
-        path: PathBuf,
-    ) {
+    #[tracing::instrument(skip(self))]
+    pub async fn spawn_compile(&self, source: PathBuf, target: PathBuf, path: PathBuf) {
         let mut s = self.clone();
         s.context
             .metadata_mut()
             .insert_local(RULE_META.to_owned(), Value::from(self.rule.clone()));
         s.context.metadata_mut().insert_local(
             VERSION_META.to_owned(),
-            Value::from(version.as_ref().to_owned()),
+            Value::from(self.version.get().to_owned()),
         );
         s.context.metadata_mut().insert_local(
             SOURCE_FILE_META.to_owned(),
@@ -113,6 +139,7 @@ impl CompileRunner {
                             stage = *s;
                         }
                         s.update_context().await;
+                        s.notify.notify_waiters();
                         loop {
                             if let Some(min) =
                                 s.results.read().await.iter().map(|(stage, _)| *stage).min()
@@ -129,6 +156,7 @@ impl CompileRunner {
         });
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn join(self) -> Result<Context, Error> {
         let mut ctx = self.context;
         let mut tasks = self.tasks.write().await;

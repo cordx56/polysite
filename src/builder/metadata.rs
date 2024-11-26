@@ -1,9 +1,10 @@
-use crate::error::Error;
+use crate::{error::Error, *};
 use serde::{ser::SerializeMap, Serialize};
 use serde_json::{json, to_value, Map, Number};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{RwLock, RwLockReadGuard};
+use tokio::sync::{RwLock, RwLockMappedWriteGuard, RwLockReadGuard, RwLockWriteGuard};
 use tracing_error::SpanTrace;
 
 pub use serde_json::Value;
@@ -14,30 +15,43 @@ pub const TARGET_FILE_META: &str = "_target";
 pub const PATH_META: &str = "_path";
 pub const VERSION_META: &str = "_version";
 pub const BODY_META: &str = "_body";
+pub const VERSIONS_META: &str = "_versions";
 
 #[derive(Clone, Debug)]
-pub struct Metadata<G = Arc<RwLock<Value>>, L = Value> {
-    global: G,
-    local: L,
+pub struct Metadata {
+    global: Arc<RwLock<Value>>,
+    local: Value,
 }
 
-pub type ReadLockedMetadata<'a> = Metadata<Arc<RwLockReadGuard<'a, Value>>, &'a Value>;
+#[derive(Clone, Debug)]
+pub struct ReadLockedMetadata<'a> {
+    metadata: &'a Metadata,
+    locked: Arc<RwLockReadGuard<'a, Value>>,
+}
 
 impl Metadata {
     pub fn new() -> Self {
         Self {
-            global: Arc::new(RwLock::new(json!({}))),
+            global: Arc::new(RwLock::new(json!({
+                VERSIONS_META: json!({}),
+            }))),
             local: json!({}),
         }
     }
     pub async fn read_lock(&self) -> ReadLockedMetadata {
-        Metadata {
-            global: Arc::new(self.global.read().await),
-            local: &self.local,
+        ReadLockedMetadata {
+            metadata: self,
+            locked: Arc::new(self.global.read().await),
         }
     }
     pub fn local(&self) -> &Map<String, Value> {
         self.local.as_object().unwrap()
+    }
+    pub async fn global(&self) -> RwLockReadGuard<Map<String, Value>> {
+        RwLockReadGuard::map(self.global.read().await, |v| v.as_object().unwrap())
+    }
+    pub async fn global_mut(&self) -> RwLockMappedWriteGuard<Map<String, Value>> {
+        RwLockWriteGuard::map(self.global.write().await, |v| v.as_object_mut().unwrap())
     }
     pub async fn get(&self, key: &str) -> Option<Value> {
         if let Some(local) = self.local.get(key) {
@@ -57,6 +71,7 @@ impl Metadata {
     pub fn insert_local(&mut self, key: String, metadata: Value) {
         self.local.as_object_mut().unwrap().insert(key, metadata);
     }
+    #[tracing::instrument(skip(ser))]
     pub fn to_value(ser: impl Serialize) -> Result<Value, Error> {
         to_value(ser).map_err(|serde_error| Error::SerdeJson {
             trace: SpanTrace::capture(),
@@ -65,6 +80,72 @@ impl Metadata {
     }
     pub fn merge(&mut self, other: Metadata) {
         merge_values(&mut self.local, other.local);
+    }
+
+    /// Get currently compiling [`Version`]
+    pub fn version(&self) -> Option<Version> {
+        self.local
+            .get(VERSION_META)
+            .map(|v| v.as_str().map(|v| v.into()))
+            .flatten()
+    }
+
+    /// Get currently compiling rule name
+    pub fn rule(&self) -> Option<String> {
+        self.local
+            .get(RULE_META)
+            .map(|v| v.as_str().map(|v| v.to_owned()))
+            .flatten()
+    }
+
+    /// Get currently compiling source file path
+    pub fn source(&self) -> Option<PathBuf> {
+        self.local
+            .get(SOURCE_FILE_META)
+            .map(|v| v.as_str().map(|v| PathBuf::from(v)))
+            .flatten()
+    }
+    /// Get currently compiling target file path
+    pub fn target(&self) -> Option<PathBuf> {
+        self.local
+            .get(TARGET_FILE_META)
+            .map(|v| v.as_str().map(|v| PathBuf::from(v)))
+            .flatten()
+    }
+    /// Get currently compiling URL path
+    pub fn path(&self) -> Option<PathBuf> {
+        self.local
+            .get(PATH_META)
+            .map(|v| v.as_str().map(|v| PathBuf::from(v)))
+            .flatten()
+    }
+    /// Get currently compiling body [`Value`], which can be [`Vec<u8>`] or [`String`].
+    pub fn body(&self) -> Option<&Value> {
+        self.local.get(BODY_META)
+    }
+}
+impl ReadLockedMetadata<'_> {
+    pub fn get_version(&self, version: &Version) -> Option<HashMap<String, Metadata>> {
+        self.locked
+            .get(VERSIONS_META)
+            .unwrap()
+            .get(version.get())
+            .map(|w| w.as_object())
+            .flatten()
+            .map(|v| {
+                HashMap::from_iter(v.iter().map(|(path, w)| {
+                    (
+                        path.to_owned(),
+                        Metadata {
+                            global: self.metadata.global.clone(),
+                            local: w.clone(),
+                        },
+                    )
+                }))
+            })
+    }
+    pub fn metadata(&self) -> &Metadata {
+        &self.metadata
     }
 }
 
@@ -99,10 +180,10 @@ impl Serialize for ReadLockedMetadata<'_> {
         S: serde::Serializer,
     {
         let mut iter = HashMap::new();
-        for (k, v) in self.global.as_object().unwrap().iter() {
+        for (k, v) in self.locked.as_object().unwrap().iter() {
             iter.insert(k, v);
         }
-        for (k, v) in self.local.as_object().unwrap().iter() {
+        for (k, v) in self.metadata.local.as_object().unwrap().iter() {
             iter.insert(k, v);
         }
         let mut map = serializer.serialize_map(Some(iter.len()))?;
@@ -121,6 +202,7 @@ pub trait BytesValue: Sized {
 }
 
 impl BytesValue for Value {
+    #[tracing::instrument(skip(ser))]
     fn from_ser(ser: impl Serialize) -> Result<Self, Error> {
         serde_json::to_value(ser).map_err(|serde_error| Error::SerdeJson {
             trace: SpanTrace::capture(),

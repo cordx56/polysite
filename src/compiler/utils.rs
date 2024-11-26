@@ -1,5 +1,6 @@
 use crate::*;
-use std::collections::VecDeque;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 /// Compiler function
 ///
@@ -18,32 +19,69 @@ where
     }
 }
 
+#[derive(Clone)]
+pub struct WaitStage {
+    steps: usize,
+    current: usize,
+}
+impl WaitStage {
+    pub fn new() -> Self {
+        Self {
+            steps: 1,
+            current: 0,
+        }
+    }
+    pub fn wait_steps(steps: usize) -> Self {
+        Self { steps, current: 0 }
+    }
+}
+impl Compiler for WaitStage {
+    fn next_step(&mut self, ctx: Context) -> CompilerReturn {
+        if self.current < self.steps {
+            self.current += 1;
+            compile!(Ok(CompileStep::WaitStage(ctx)))
+        } else {
+            compile!(Ok(CompileStep::Completed(ctx)))
+        }
+    }
+}
+
 /// Pipe compiler
 /// Create large compiler from piping small ones
 #[derive(Clone)]
 pub struct PipeCompiler {
-    compilers: VecDeque<Box<dyn Compiler>>,
+    compilers: Vec<Box<dyn Compiler>>,
+    ready: Option<Arc<RwLock<(usize, Vec<Box<dyn Compiler>>)>>>,
 }
 impl PipeCompiler {
     pub fn new() -> Self {
         Self {
-            compilers: VecDeque::new(),
+            compilers: Vec::new(),
+            ready: None,
         }
     }
     pub fn add_compiler(mut self, compiler: impl Compiler + 'static) -> Self {
-        self.compilers.push_back(Box::new(compiler));
+        self.compilers.push(Box::new(compiler));
         self
+    }
+    fn setup(&mut self) {
+        if self.ready.is_none() {
+            self.ready = Some(Arc::new(RwLock::new((0, self.compilers.clone()))));
+        }
     }
 }
 impl Compiler for PipeCompiler {
     fn next_step(&mut self, ctx: Context) -> CompilerReturn {
-        if let Some(mut compiler) = self.compilers.pop_front() {
-            let len = self.compilers.len();
-            compile!({
+        self.setup();
+        let ready = self.ready.clone().unwrap();
+        compile!({
+            let (ref mut current, ref mut compilers) = *ready.write().await;
+            if let Some(compiler) = compilers.get_mut(*current) {
                 let res = compiler.next_step(ctx).await?;
                 match res {
                     CompileStep::Completed(ctx) => {
-                        if len == 0 {
+                        *current += 1;
+                        if *current == compilers.len() {
                             Ok(CompileStep::Completed(ctx))
                         } else {
                             Ok(CompileStep::InProgress(ctx))
@@ -51,10 +89,10 @@ impl Compiler for PipeCompiler {
                     }
                     _ => Ok(res),
                 }
-            })
-        } else {
-            compile!(Ok(CompileStep::Completed(ctx)))
-        }
+            } else {
+                Ok(CompileStep::Completed(ctx))
+            }
+        })
     }
 }
 

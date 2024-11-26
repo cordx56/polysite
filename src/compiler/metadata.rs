@@ -2,17 +2,7 @@ use crate::{builder::metadata::Value, *};
 use serde::Serialize;
 use std::collections::HashMap;
 
-/// [`SetMetadata`] sets metadata to context
-///
-/// # Example
-/// ```
-/// use polysite::compiler::metadata::SetMetadata;
-/// SetMetadata::new()
-///     .global("site_url", "https://example.ccom")
-///     .unwrap()
-///     .compiling("compiling", vec!["value"])
-///     .unwrap();
-/// ```
+/// The compiler to set [`Metadata`] for the [`Context`].
 #[derive(Clone)]
 pub struct SetMetadata {
     compiling: HashMap<String, Value>,

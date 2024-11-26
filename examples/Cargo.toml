@@ -20,9 +20,5 @@ name = "concurrency_test"
 path = "concurrency_test.rs"
 
 [[example]]
-name = "snapshot"
-path = "snapshot.rs"
-
-[[example]]
 name = "practical_example"
 path = "practical_example.rs"
